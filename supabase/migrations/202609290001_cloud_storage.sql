@@ -167,7 +167,7 @@ declare g private.games; p private.publications; l private.plan_limits; c privat
   game_id uuid; expected int; checked jsonb; publication_count int; new_share text; attempts int=0;
 begin
   if command is null or command not in ('save','publish','unpublish','republish','delete') or jsonb_typeof(args)<>'object' then return private.fail('VALIDATION'); end if;
-  if args - case when command='save' then array['gameId','expectedVersion','requestId','projectText'] else array['gameId','expectedVersion','requestId'] end <> '{}'::jsonb then return private.fail('VALIDATION'); end if;
+  if args - (case when command='save' then array['gameId','expectedVersion','requestId','projectText'] else array['gameId','expectedVersion','requestId'] end) <> '{}'::jsonb then return private.fail('VALIDATION'); end if;
   if not(args ? 'gameId') or jsonb_typeof(args->'expectedVersion') is distinct from 'number' or (args->>'expectedVersion') !~ '^[0-9]+$' then return private.fail('VALIDATION'); end if;
   expected:=(args->>'expectedVersion')::int;
   game_id:=(args->>'gameId')::uuid;

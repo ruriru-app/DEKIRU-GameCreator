@@ -1,0 +1,27 @@
+begin;
+\ir helpers/setup.inc
+select ok(not has_function_privilege('anon','public.read_shared_game(text)','execute'),'anon cannot bypass edge reader');
+select ok(not has_function_privilege('authenticated','public.read_shared_game(text)','execute'),'creator cannot enumerate public data RPC');
+select ok(has_function_privilege('service_role','public.read_shared_game(text)','execute'),'only server can retrieve public snapshots');
+select ok(not has_function_privilege('authenticated','public.consume_shared_read(text)','execute'),'creator cannot choose own rate-limit hash');
+create temp table test_game as select public.mutate_game('save',pg_temp.args())->'data' meta;
+select is(public.read_shared_game('G7m2Pk8wQ4t9R3vX6nYzAa'),null,'unknown snapshot absent');
+update test_game set meta=public.mutate_game('publish',pg_temp.command((meta->>'id')::uuid,1))->'data';
+select is(public.read_shared_game((select meta->'publication'->>'shareId' from test_game))->>'runtimeVersion','fusuma-1','fixed registered runtime');
+select is(public.read_shared_game((select meta->'publication'->>'shareId' from test_game))->'project'->>'title','教材','snapshot returned');
+select ok(not (public.read_shared_game((select meta->'publication'->>'shareId' from test_game)) ? 'ownerId'),'no owner identity in public envelope');
+update private.accounts set status='disabled';
+select is(public.read_shared_game((select meta->'publication'->>'shareId' from test_game)),null,'disabled account has no new public reads');
+update private.accounts set status='active';
+update test_game set meta=public.mutate_game('unpublish',pg_temp.command((meta->>'id')::uuid,2))->'data';
+select is(public.read_shared_game((select meta->'publication'->>'shareId' from test_game)),null,'stopped snapshot unavailable');
+select ok((public.consume_shared_read(repeat('a',64))->>'allowed')::boolean,'first read allowed');
+select public.consume_shared_read(repeat('a',64)) from generate_series(2,599);
+select ok((public.consume_shared_read(repeat('a',64))->>'allowed')::boolean,'600th read allowed');
+select ok(not (public.consume_shared_read(repeat('a',64))->>'allowed')::boolean,'601st read denied');
+select ok((public.consume_shared_read(repeat('b',64))->>'allowed')::boolean,'other connection has own allowance');
+update private.read_limits set created_at=clock_timestamp()-interval '24 hours';
+select private.purge_expired_cloud_records();
+select is((select count(*)::int from private.read_limits),0,'stale connection hashes removed');
+select * from finish();
+rollback;

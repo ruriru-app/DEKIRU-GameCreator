@@ -23,6 +23,7 @@ jobs:
           version: 2.118.0
       - run: node --test tests/*.test.mjs
       - name: Start throwaway local services without logging local credentials
+        id: database
         run: |
           if ! supabase start > /tmp/dekiru-local-start.log 2>&1; then
             echo "::error::Temporary local service startup failed."
@@ -31,6 +32,7 @@ jobs:
             exit 1
           fi
       - run: supabase test db
-      - run: node --test tests/integration/cloud-db.test.mjs
+      - if: ${{ !cancelled() && steps.database.outcome == 'success' }}
+        run: node --test tests/integration/cloud-db.test.mjs
       - if: always()
         run: supabase stop --no-backup

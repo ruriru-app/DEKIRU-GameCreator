@@ -16,5 +16,7 @@ select is(private.validate_project(jsonb_set(pg_temp.project(2),'{questions,1,id
 select is(private.validate_project(jsonb_set(pg_temp.project(),'{questions,0,prompt}',to_jsonb(E'\n\t'::text))::text,'publish')->'error'->>'code','VALIDATION','blank prompt rejected');
 select is(private.validate_project(replace(pg_temp.project()::text,'問題','\u0000'),'draft')->'error'->>'code','VALIDATION','NUL rejected safely');
 select is(private.validate_project(replace(pg_temp.project()::text,'問題','\ud800'),'draft')->'error'->>'code','VALIDATION','unpaired surrogate rejected safely');
+select is(private.validate_project(jsonb_set(pg_temp.project(),'{questions,0,prompt}','"v"')::text,'publish')->>'ok','true','letter v is not whitespace');
+select is(private.validate_project(jsonb_set(pg_temp.project(),'{questions,0,prompt}',to_jsonb(chr(11)))::text,'publish')->'error'->>'code','VALIDATION','vertical tab is whitespace');
 select * from finish();
 rollback;
