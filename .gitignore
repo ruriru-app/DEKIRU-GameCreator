@@ -3,6 +3,7 @@
 /dist/
 /outputs/
 /work/
+/.worktrees/
 *.dekiru.json
 # Local verification notes can contain machine paths
 /tests/acceptance-results.md
