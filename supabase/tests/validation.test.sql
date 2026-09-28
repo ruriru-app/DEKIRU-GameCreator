@@ -1,5 +1,5 @@
 begin;
-\ir helpers/setup.sql
+\ir helpers/setup.inc
 select is(private.validate_project(pg_temp.project(200)::text,'publish')->>'ok','true','200 questions accepted');
 select is(private.validate_project(pg_temp.project(201)::text,'publish')->'error'->>'code','LIMIT','201 questions rejected');
 select is(private.validate_project(pg_temp.project(0)::text,'draft')->>'ok','true','empty draft accepted');

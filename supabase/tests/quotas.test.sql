@@ -1,5 +1,5 @@
 begin;
-\ir helpers/setup.sql
+\ir helpers/setup.inc
 select public.creator_context();
 -- Test fixture inserts are admin-only; production callers have no table grants.
 insert into private.games(id,owner_id,project,version)

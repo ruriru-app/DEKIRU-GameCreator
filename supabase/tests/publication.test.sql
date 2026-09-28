@@ -1,5 +1,5 @@
 begin;
-\ir helpers/setup.sql
+\ir helpers/setup.inc
 create temp table test_game as select public.mutate_game('save',pg_temp.args())->'data' as meta;
 select is((select meta->>'version' from test_game),'1','first save version 1');
 select is(public.creator_context()->'data'->>'plan','free','account provisioned free');

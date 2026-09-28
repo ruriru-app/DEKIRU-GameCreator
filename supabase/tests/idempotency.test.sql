@@ -1,5 +1,5 @@
 begin;
-\ir helpers/setup.sql
+\ir helpers/setup.inc
 create temp table retry as select pg_temp.args() as args;
 create temp table saved as select public.mutate_game('save',args) as result from retry;
 select is(public.mutate_game('save',(select args from retry)),(select result from saved),'response-lost retry returns exact same result');
