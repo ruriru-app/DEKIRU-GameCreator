@@ -46,3 +46,16 @@ test('preview server serves files with MIME types and blocks traversal', async (
   assert.equal((await rawRequest(preview.port, '/missing')).status, 404);
   assert.equal((await rawRequest(preview.port, '/%2e%2e%2fsecret.txt')).status, 403);
 });
+
+test('preview serves directory indexes with a deployment base path', async (context) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'dekiru-base-'));
+  await mkdir(path.join(root, 'p'));
+  await writeFile(path.join(root, 'p', 'index.html'), 'player');
+  for (const basePath of ['/', '/DEKIRU-GameCreator/']) {
+    const server = await createPreviewServer({root, port:0, basePath});
+    context.after(() => server.close());
+    assert.equal((await rawRequest(server.port, basePath+'p/?g=test')).body, 'player');
+    assert.equal((await rawRequest(server.port, basePath+'%2e%2e%2fsecret')).status, 403);
+    if (basePath !== '/') assert.equal((await rawRequest(server.port, '/p/')).status, 404);
+  }
+});

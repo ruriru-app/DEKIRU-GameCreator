@@ -1,0 +1,28 @@
+{
+  "commit": "bf15e63",
+  "files": {
+    "Typing/core/romaji-converter.js": "238dca432a173e8d3306fa7bfa708df188e14de99d752575a7878037970c66a5",
+    "Typing/core/typing-engine.js": "b7d50958fa09152360fb2d08d94767d673efbb5a216f6085d638e53e60fb14e2",
+    "Typing/templates/fusuma/assets/audio/correct.mp3": "ed2c679e5c2a13b0d533838f1a4a4c91694e6f1d31882b1ea510f07deeb71270",
+    "Typing/templates/fusuma/assets/audio/result-clear.mp3": "534ae9b4cb53c30df735a785c7efe508b034e0bfe7ba6afc59d25ed4c659108b",
+    "Typing/templates/fusuma/assets/audio/result-cloudy.mp3": "d226d29e1566aba0adc1236f502b982d20457807af78fbe8e6a9a35db0a7d3e3",
+    "Typing/templates/fusuma/assets/audio/result-rain.mp3": "0ed89683c6b619b4d46cf70f0b3b16bcbc561bb3e06477b353bfdaf2a478a22d",
+    "Typing/templates/fusuma/assets/audio/result-storm.mp3": "3e6d9a6f4265ae589853605ac6a138d3979e61381d1fcf3753dd433330869d34",
+    "Typing/templates/fusuma/assets/audio/result-sunny.mp3": "740f037d0f5aaf50bdd216c081ecc9e7ba1d81ded8f09321359c1b1599aa88a2",
+    "Typing/templates/fusuma/assets/audio/travel-tatami.mp3": "4f5ea6786ea0d72fd3ececc8bde8704130479fea516b9dd9db167c163dad9b5d",
+    "Typing/templates/fusuma/assets/images/clear.png": "7c162b78cf9be0f9bee60c0e9b202b02359db162c42d64e660ffc2ca67286ff5",
+    "Typing/templates/fusuma/assets/images/cloudy.png": "054f3ab779d2ef055ee0902e06183580105a4db00398be67cea691b3fd7eba65",
+    "Typing/templates/fusuma/assets/images/fusuma-left.png": "c505a62d5783e43342ea4b4cbac6dc5c2d1dacd5fe3868b452d4e41bc9cb5a1e",
+    "Typing/templates/fusuma/assets/images/fusuma-right.png": "c505a62d5783e43342ea4b4cbac6dc5c2d1dacd5fe3868b452d4e41bc9cb5a1e",
+    "Typing/templates/fusuma/assets/images/rain.png": "dee7e735a433f7d40367fb309589776b870480b1fed4b6d709458fa6b148c70f",
+    "Typing/templates/fusuma/assets/images/room.png": "82739b80c697b78beaaf547a37753fae017f763ae7b91d50e77dae35759df4b3",
+    "Typing/templates/fusuma/assets/images/storm.png": "77cb385f5f742ddb33e1e8f9bce6ad754c251c493c95287e1531318ff137c8e4",
+    "Typing/templates/fusuma/assets/images/sunny.png": "7f040d127fbc640732278082cc92e56e408ef75dccf7ba7d27801259dd018fdd",
+    "Typing/templates/fusuma/event-controller.js": "8a46e5d02e08d1de913a3a219ae2afe31a04b8b01107379b92e10081c77b9cf4",
+    "Typing/templates/fusuma/manifest.js": "4d7f01d3688c31cb96d2fb47975b769e96d332c01b4868ffc7799d8dda3ea104",
+    "Typing/templates/fusuma/renderer.js": "e7a546b0d4be05c3a6d758dcc857dfe91853cd7e2e6c2a0f16a16840630766fb",
+    "Typing/templates/fusuma/style.css": "f07bccf06f16e813cca842ff5e714a29a4a32fa58094b77be2bdc8b4a8af6470",
+    "core/audio-manager.js": "e6c265265d276cb960e69626d1fe7e5a2b51c0186c5e81c2172109b4f0b644ef",
+    "core/html-exporter.js": "e4665c5df8ac377b44ec679417531826ea2a2f0d6dbe3b17a4312c740e13115b"
+  }
+}

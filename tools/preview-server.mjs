@@ -14,7 +14,7 @@ const mimeTypes = new Map([
   ['.svg', 'image/svg+xml'],
 ]);
 
-function resolveRequestPath(root, requestUrl) {
+function resolveRequestPath(root, requestUrl, basePath) {
   let pathname;
   try {
     pathname = decodeURIComponent(new URL(requestUrl, 'http://127.0.0.1').pathname);
@@ -23,6 +23,8 @@ function resolveRequestPath(root, requestUrl) {
   }
   pathname = pathname.replaceAll('\\', '/');
   if (pathname.split('/').includes('..')) return { status: 403 };
+  if (!pathname.startsWith(basePath)) return { status: 404 };
+  pathname = '/' + pathname.slice(basePath.length);
   if (pathname === '/') pathname = '/app/index.html';
 
   const target = path.resolve(root, pathname.replace(/^\/+/, ''));
@@ -31,18 +33,23 @@ function resolveRequestPath(root, requestUrl) {
   return { status: 200, target };
 }
 
-export async function createPreviewServer({ root, port = 4173 }) {
+export async function createPreviewServer({ root, port = 4173, basePath = '/' }) {
+  if (!/^\/(?:[a-zA-Z0-9_-]+\/)*$/.test(basePath)) throw new Error('Invalid basePath');
   const absoluteRoot = path.resolve(root);
   const server = http.createServer(async (request, response) => {
-    const resolved = resolveRequestPath(absoluteRoot, request.url ?? '/');
+    const resolved = resolveRequestPath(absoluteRoot, request.url ?? '/', basePath);
     if (resolved.status !== 200) {
       response.writeHead(resolved.status, { 'Content-Type': 'text/plain; charset=utf-8' });
-      response.end(resolved.status === 403 ? 'Forbidden' : 'Bad Request');
+      response.end(resolved.status === 403 ? 'Forbidden' : resolved.status === 404 ? 'Not Found' : 'Bad Request');
       return;
     }
 
     try {
-      const info = await stat(resolved.target);
+      let info = await stat(resolved.target);
+      if (info.isDirectory()) {
+        resolved.target = path.join(resolved.target, 'index.html');
+        info = await stat(resolved.target);
+      }
       if (!info.isFile()) throw Object.assign(new Error('Not a file'), { code: 'ENOENT' });
       const body = await readFile(resolved.target);
       const type = mimeTypes.get(path.extname(resolved.target).toLowerCase()) ?? 'application/octet-stream';
@@ -69,7 +76,7 @@ export async function createPreviewServer({ root, port = 4173 }) {
   return {
     server,
     port: actualPort,
-    url: `http://127.0.0.1:${actualPort}/`,
+    url: `http://127.0.0.1:${actualPort}${basePath}`,
     close: () => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
   };
 }
