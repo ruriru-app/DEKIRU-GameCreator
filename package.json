@@ -1,0 +1,10 @@
+{
+  "name": "dekiru-gamecreator",
+  "private": true,
+  "type": "module",
+  "scripts": {"test":"node --test tests/*.test.mjs","build:cloud":"node tools/build-cloud-sdk.mjs"},
+  "dependencies": {"@supabase/supabase-js":"2.117.2"},
+  "devDependencies": {"esbuild":"0.25.5"},
+  "engines": {"node":">=22"},
+  "packageManager": "pnpm@11.19.0"
+}
