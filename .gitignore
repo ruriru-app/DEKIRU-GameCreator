@@ -1,0 +1,19 @@
+# Local backups, generated standalone games and private editable projects
+/backups/
+/dist/
+/outputs/
+/work/
+*.dekiru.json
+# Local verification notes can contain machine paths
+/tests/acceptance-results.md
+# Credentials and editor/OS files
+.env
+.env.*
+*.pem
+*.key
+node_modules/
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+*.log

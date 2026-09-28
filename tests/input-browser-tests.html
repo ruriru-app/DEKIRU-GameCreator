@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DEKIRU Input Tests</title>
+<style>body{font-family:system-ui;margin:24px;color:#514842}.pass{color:#287a48}.fail{color:#b73737}#game-host{width:960px;max-width:100%}li{margin:5px 0}</style>
+<body data-status="running">
+<h1>Input assistance acceptance</h1>
+<ol id="results"></ol>
+<div id="game-host"></div>
+<script type="module">
+  import { mountFusumaGame } from '../Typing/templates/fusuma/renderer.js';
+  import { createTypingEngine } from '../Typing/core/typing-engine.js';
+  import { romajiToHiragana } from '../Typing/core/romaji-converter.js';
+  import { createFusumaEventController } from '../Typing/templates/fusuma/event-controller.js';
+  import { fusumaManifest } from '../Typing/templates/fusuma/manifest.js';
+  let failed = 0;
+  const report = (name, pass) => {
+    const li = document.createElement('li');
+    li.className = pass ? 'pass' : 'fail';
+    li.textContent = `${pass ? 'PASS' : 'FAIL'} — ${name}`;
+    document.querySelector('#results').append(li);
+    if (!pass) failed++;
+  };
+  const nextTask = () => new Promise(resolve => setTimeout(resolve, 10));
+  const host = document.querySelector('#game-host');
+  let engine;
+  let game;
+  try {
+    game = mountFusumaGame({
+      host,
+      project: { title: '入力テスト', questions: [{id:'q',prompt:'743年に定められた法律は？',displayAnswer:'墾田永年私財法',reading:'こんでんえいねんしざいほう',romajiHint:"konden'einenshizaihou"}] },
+      manifest: fusumaManifest,
+      // Audio and wall-clock scheduling are outside these input tests.
+      audioManager: {register(){},stopAll(){},stopChannel(){},playLoop(){},playEffect(){}},
+      scheduler: {setTimeout(){return 1;},clearTimeout(){}},
+      createEngine: options => (engine = createTypingEngine(options)),
+      convertRomaji: romajiToHiragana,
+      createEventController: createFusumaEventController,
+    });
+    const root = host.shadowRoot;
+    const input = root.querySelector('[data-role="input"]');
+    const form = root.querySelector('form');
+    const feedback = root.querySelector('[data-role="feedback"]');
+    const preview = root.querySelector('[data-role="kana-preview"]');
+    const answer = root.querySelector('[data-role="answer"]');
+    const reset = () => {game.restart();engine.completeTravel();};
+    const type = (value, composing = false) => {
+      input.value = value;
+      input.dispatchEvent(new InputEvent('input', {bubbles:true,isComposing:composing}));
+    };
+    const submit = () => form.dispatchEvent(new Event('submit', {bubbles:true,cancelable:true}));
+    const composition = name => input.dispatchEvent(new CompositionEvent(name, {bubbles:true}));
+    const key = (name, props = {}) => input.dispatchEvent(new KeyboardEvent(name, {key:'Enter',bubbles:true,cancelable:true,...props}));
+    const unchanged = () => engine.getSnapshot().phase === 'question' && engine.getSnapshot().wrongCount === 0 && engine.getSnapshot().reviewCount === 0;
+    reset();
+    type('Ａｂｃ１２３ｎ＇ａ－');
+    report('fullwidth letters, digits and romanization punctuation become halfwidth', input.value === "Abc123n'a-");
+    input.value = 'ｋｏｔａｅ'; input.setSelectionRange(2,3); input.dispatchEvent(new Event('input'));
+    report('width normalization preserves selection for editing within the answer', input.value === 'kotae' && input.selectionStart === 2 && input.selectionEnd === 3);
+
+    reset();
+    composition('compositionstart'); type('ｋｏ', true);
+    report('unconfirmed composition is not rewritten', input.value === 'ｋｏ');
+    submit();
+    report('submission during composition never counts as a wrong answer', unchanged());
+    composition('compositionend');
+    report('fullwidth text is normalized when composition finishes', input.value === 'ko');
+    await nextTask();
+
+    for (const value of ['こんでんえいねんしざいほう','墾田永年私財法','コタエ','ｺﾀｴ','koたえ','。','、','｢']) {
+      reset(); type(value); submit();
+      report(`Japanese input (${value}) is preserved and not graded`, unchanged() && input.value === value && /英数/.test(feedback.textContent));
+    }
+
+    reset(); type('matigai'); submit();
+    const correctionHint = feedback.textContent;
+    composition('compositionstart'); type('あ', true); composition('compositionend'); await nextTask();
+    type('k');
+    report('returning to roman letters restores the existing correction hint', feedback.textContent === correctionHint && engine.getSnapshot().wrongCount === 1);
+
+    reset();
+    composition('compositionstart'); type('ｋｏｎｄｅｎｎｅｉｎｅｎｓｉｚａｉｈｏｕ', true);
+    key('keydown', {isComposing:true,keyCode:229});
+    composition('compositionend'); submit();
+    report('composition-confirming Enter cannot submit an otherwise correct answer', unchanged());
+    key('keyup'); await nextTask(); key('keydown'); submit(); key('keyup');
+    report('a subsequent deliberate Enter submits normalized fullwidth text', engine.getSnapshot().phase === 'door' && engine.getSnapshot().firstTryCorrect === 1);
+
+    reset(); type('kondenneinensizaihou');
+    key('keydown', {keyCode:229}); submit();
+    report('IME Enter with keyCode 229 is guarded even without isComposing', unchanged());
+    key('keyup'); await nextTask(); key('keydown'); submit(); key('keyup');
+    report('ordinary Enter works after the IME Enter guard is released', engine.getSnapshot().phase === 'door');
+
+    reset(); type('kondenneinensizaihou'); composition('compositionend'); submit();
+    report('compositionend-before-submit ordering is protected', unchanged());
+    await nextTask(); key('keydown'); submit(); key('keyup');
+    report('a normal submission after compositionend still works', engine.getSnapshot().phase === 'door');
+
+    reset(); type('あ'); type('kondenneinenshizaihou'); submit();
+    report('switching to roman letters preserves a first-try correct score', engine.getSnapshot().firstTryCorrect === 1 && engine.getSnapshot().reviewCount === 0);
+    report('correct answer uses the registered kanji, with reading separate', answer.textContent === '墾田永年私財法' && root.querySelector('[data-role="reading"]').textContent === 'こんでんえいねんしざいほう');
+
+    reset(); type("konden'einenshizaihou"); submit();
+    report('apostrophe n and Hepburn input remain accepted', engine.getSnapshot().phase === 'door');
+    reset(); type('kan');
+    report('trailing n stays unsettled in the preview', preview.textContent === 'かn');
+    composition('compositionstart');
+    reset(); type('kondenneinenshizaihou'); submit();
+    report('restart resets composition state', engine.getSnapshot().phase === 'door');
+
+    const stylesheet = root.querySelector('link');
+    if (!stylesheet.sheet) await new Promise(resolve => stylesheet.addEventListener('load', resolve, {once:true}));
+  } catch(error) { report(error.stack || error.message, false); }
+  document.body.dataset.status = failed ? 'failed' : 'passed';
+  document.title = failed ? `FAIL (${failed}) — DEKIRU Input Tests` : 'PASS — DEKIRU Input Tests';
+</script>
+</body>
+</html>

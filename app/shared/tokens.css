@@ -1,0 +1,30 @@
+:root {
+  --purple: #b59ad9;
+  --purple-deep: #8f70b7;
+  --purple-soft: #f2ecf8;
+  --brown: #7a6e65;
+  --brown-deep: #514842;
+  --paper: #fffdf8;
+  --cream: #faf7f0;
+  --line: #e5ded7;
+  --danger: #b85d62;
+  --success: #5e8a6f;
+  --shadow: 0 14px 36px rgb(96 72 53 / 9%);
+  --radius-lg: 24px;
+  --radius-md: 16px;
+  color: var(--brown-deep);
+  font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
+  background: var(--cream);
+}
+
+* { box-sizing: border-box; }
+html { min-width: 0; }
+body { margin: 0; min-width: 0; background: var(--cream); }
+button, input, textarea { font: inherit; }
+button, a, input, textarea { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline: 3px solid #6d5295;
+  outline-offset: 3px;
+}
+
+[hidden] { display: none !important; }

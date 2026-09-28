@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DEKIRU Feedback Tests</title>
+<style>body{font-family:system-ui;margin:24px;color:#514842}#host{width:640px;max-width:100%}li{margin:6px 0}.pass{color:#287a48}.fail{color:#b73737}</style>
+<body data-status="running">
+<h1>問題フレーム：色と揺れの検証</h1><ol id="results"></ol><div id="host"></div>
+<script type="module">
+import { mountFusumaGame } from '../Typing/templates/fusuma/renderer.js';
+import { createTypingEngine } from '../Typing/core/typing-engine.js';
+import { romajiToHiragana } from '../Typing/core/romaji-converter.js';
+import { createFusumaEventController } from '../Typing/templates/fusuma/event-controller.js';
+import { fusumaManifest } from '../Typing/templates/fusuma/manifest.js';
+let failures=0, now=0, sequence=0, engine, game;
+const timers=new Map();
+const scheduler={
+  setTimeout(callback, delay){const id=++sequence;timers.set(id,{callback,time:now+delay});return id;},
+  clearTimeout(id){timers.delete(id);}
+};
+function advance(ms){
+  const target=now+ms;
+  for(;;){
+    const next=[...timers].filter(([,timer])=>timer.time<=target).sort((a,b)=>a[1].time-b[1].time)[0];
+    if(!next) break;
+    now=next[1].time;timers.delete(next[0]);next[1].callback();
+  }
+  now=target;
+}
+function report(label, pass){
+  const li=document.createElement('li');li.className=pass?'pass':'fail';
+  li.textContent=`${pass?'PASS':'FAIL'} — ${label}`;
+  document.querySelector('#results').append(li);if(!pass)failures++;
+}
+const frame=()=>new Promise(requestAnimationFrame);
+try {
+  game=mountFusumaGame({
+    host:document.querySelector('#host'),
+    project:{title:'枠のテスト',questions:[
+      {id:'a',prompt:'一問目',displayAnswer:'亜',reading:'あ',romajiHint:'a'},
+      {id:'i',prompt:'二問目',displayAnswer:'伊',reading:'い',romajiHint:'i'}
+    ]},
+    manifest:fusumaManifest,scheduler,
+    createEngine:options=>(engine=createTypingEngine(options)),
+    convertRomaji:romajiToHiragana,createEventController:createFusumaEventController,
+    // Only the audio device and game clock are replaced; UI, engine and CSS are real.
+    audioManager:{register(){},stopAll(){},stopChannel(){},playLoop(){},playEffect(){}}
+  });
+  const root=document.querySelector('#host').shadowRoot;
+  const quiz=root.querySelector('form'), input=root.querySelector('input'), feedback=root.querySelector('[data-role="feedback"]');
+  const stylesheet=root.querySelector('link');
+  if(!stylesheet.sheet)await new Promise(resolve=>stylesheet.addEventListener('load',resolve,{once:true}));
+  const color=()=>getComputedStyle(quiz).borderTopColor;
+  const orange=()=>color()==='rgb(229, 139, 50)';
+  const shakes=()=>quiz.getAnimations().filter(animation=>animation.animationName==='shake');
+  const still=()=>shakes().length===0;
+  const type=value=>{input.value=value;input.dispatchEvent(new InputEvent('input',{bubbles:true}));};
+  const submit=value=>{input.value=value;quiz.requestSubmit();};
+  const compose=name=>input.dispatchEvent(new CompositionEvent(name,{bubbles:true}));
+  const t=fusumaManifest.timings;
+  const nextQuestion=async()=>{await frame();advance(t.answerHoldMs+t.doorOpenMs+t.doorSettleMs+t.travelMs);await frame();};
+  const restart=async()=>{game.restart();await frame();advance(t.travelMs);await frame();};
+
+  game.start();advance(t.travelMs);await frame();
+  const normalColor=color();
+  report('初回出題は通常の枠で揺れない',!orange()&&still());
+  submit('a');await nextQuestion();
+  report('一問目に一発正解→二問目の初表示も揺れない',still()&&engine.getSnapshot().position===1&&engine.getSnapshot().wrongCount===0);
+
+  await restart();
+  const normalRect=input.getBoundingClientRect();
+  type('あ');
+  report('かな入力は元サンプルと同じオレンジ枠で注意を示す',orange()&&/英数/.test(feedback.textContent));
+  report('かな入力の注意では揺れず、誤答にも数えない',still()&&engine.getSnapshot().wrongCount===0&&engine.getSnapshot().reviewCount===0);
+  const warningRect=input.getBoundingClientRect();
+  report('枠の変色で入力欄の横位置や幅が飛ばない',['x','width'].every(key=>Math.abs(normalRect[key]-warningRect[key])<1));
+  type('a');
+  report('誤答前なら英数に戻すと通常の枠へ戻る',color()===normalColor&&still());
+  type('かな');type('');
+  report('かなを消して空欄に戻しても注意色が残らない',color()===normalColor&&still());
+  input.value='かな';quiz.requestSubmit();
+  report('入力イベントのない送信でも日本語なら注意枠・採点保留',orange()&&engine.getSnapshot().wrongCount===0&&still());
+  type('');compose('compositionstart');
+  report('IME変換開始時も注意枠だけを出す',orange()&&still());
+  input.value='ａ';compose('compositionend');
+  await new Promise(resolve=>setTimeout(resolve,10));
+  report('全角英数の確定後は半角に補正して通常色へ戻す',input.value==='a'&&color()===normalColor&&still());
+
+  submit('u');
+  const firstShake=shakes()[0];
+  report('実際の誤答はオレンジ枠と一度の揺れを出す',orange()&&Boolean(firstShake)&&engine.getSnapshot().wrongCount===1);
+  await Promise.all(shakes().map(animation=>animation.finished));await frame();
+  report('揺れ終了後も誤答のオレンジ枠とヒントを維持する',still()&&orange()&&feedback.textContent.includes('あ'));
+  type('かな');type('a');
+  report('すでに誤答した問題は英数へ戻してもオレンジを維持する',orange()&&still()&&engine.getSnapshot().wrongCount===1);
+  submit('u');
+  report('同じ問題の再誤答でも新しい揺れが一度だけ発生する',orange()&&shakes().length===1&&shakes()[0]!==firstShake&&engine.getSnapshot().wrongCount===2);
+  submit('a');await nextQuestion();
+  report('誤答を含む一問目の正解後、二問目に揺れも注意色も持ち越さない',still()&&color()===normalColor&&engine.getSnapshot().position===1&&engine.getSnapshot().wrongCount===0);
+  submit('i');await nextQuestion();
+  report('復習の問題も通常の枠で静かに出題される',still()&&color()===normalColor&&engine.getSnapshot().round==='review');
+
+  submit('u');await restart();
+  report('誤答直後の再スタートで揺れと注意色を確実に消す',still()&&color()===normalColor&&engine.getSnapshot().wrongCount===0);
+  submit('a');await nextQuestion();
+  report('再スタート後、一問目一発正解→二問目でも揺れが再発しない',still()&&color()===normalColor&&engine.getSnapshot().position===1);
+  type('かな');await restart();
+  report('かな入力の注意色も再スタートで消える',still()&&color()===normalColor);
+  submit('u');
+  root.querySelector('[data-role="replay"]').click();await frame();advance(t.travelMs);await frame();
+  report('もう一度の再生経路でも誤答の状態を引き継がない',still()&&color()===normalColor&&engine.getSnapshot().wrongCount===0);
+  // Exercise the same computed animation:none path as reduced-motion CSS,
+  // without changing the user's OS preference.
+  const noMotion=document.createElement('style');
+  noMotion.textContent='.quiz-panel.is-shaking { animation: none !important; }';
+  root.append(noMotion);
+  submit('u');
+  report('動きを抑える設定では色だけを変え、揺れの状態を残さない',orange()&&still()&&!quiz.classList.contains('is-shaking'));
+  noMotion.remove();
+  report('動きを戻しても以前の誤答による遅れた揺れを出さない',still());
+} catch(error){report(error.stack||error.message,false);}
+game?.destroy();
+document.body.dataset.status=failures?'failed':'passed';
+document.title=failures?`FAIL (${failures}) — Feedback Tests`:'PASS — Feedback Tests';
+</script></body></html>

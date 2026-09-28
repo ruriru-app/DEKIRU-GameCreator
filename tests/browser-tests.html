@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DEKIRU Browser Tests</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; color: #4f4640; }
+    #game-host { width: 640px; max-width: 100%; }
+    .stage { display: none !important; }
+    li { margin: 6px 0; }
+    .pass { color: #287a48; }
+    .fail { color: #b73737; }
+  </style>
+</head>
+<body data-status="running">
+  <h1>Browser acceptance</h1>
+  <ol id="results"></ol>
+  <div id="game-host"></div>
+  <script type="module">
+    const results = document.querySelector('#results');
+    let failures = 0;
+
+    function report(name, passed, detail = '') {
+      const item = document.createElement('li');
+      item.className = passed ? 'pass' : 'fail';
+      item.textContent = `${passed ? 'PASS' : 'FAIL'} — ${name}${detail ? `: ${detail}` : ''}`;
+      results.append(item);
+      if (!passed) failures += 1;
+    }
+
+    function assert(condition, message) {
+      if (!condition) throw new Error(message);
+    }
+
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    try {
+      const [rendererModule, engineModule, converterModule, controllerModule, manifestModule] = await Promise.all([
+        import('../Typing/templates/fusuma/renderer.js'),
+        import('../Typing/core/typing-engine.js'),
+        import('../Typing/core/romaji-converter.js'),
+        import('../Typing/templates/fusuma/event-controller.js'),
+        import('../Typing/templates/fusuma/manifest.js'),
+      ]);
+      const { mountFusumaGame } = rendererModule;
+      const { createTypingEngine } = engineModule;
+      const { romajiToHiragana } = converterModule;
+      const { createFusumaEventController } = controllerModule;
+      const manifest = {
+        ...manifestModule.fusumaManifest,
+        timings: {
+          travelMs: 100,
+          answerHoldMs: 50,
+          doorOpenMs: 100,
+          doorSettleMs: 50,
+          resultArrivalMs: 50,
+          resultRevealMs: 150,
+          resultTransitionMs: 125,
+        },
+      };
+      const audioCalls = [];
+      const audioManager = {
+        register: (key) => audioCalls.push(['register', key]),
+        playLoop: (...args) => audioCalls.push(['playLoop', ...args]),
+        playEffect: (...args) => audioCalls.push(['playEffect', ...args]),
+        stopChannel: (...args) => audioCalls.push(['stopChannel', ...args]),
+        stopAll: () => audioCalls.push(['stopAll']),
+        setVolume: () => {},
+        setMuted: () => {},
+      };
+      const project = {
+        title: 'ブラウザテスト',
+        settings: { volume: 0.8, muted: false },
+        questions: [
+          { id: 'q1', prompt: '答えは？', displayAnswer: '答え', reading: 'こたえ', romajiHint: 'kotae' },
+          { id: 'q2', prompt: '次の答えは？', displayAnswer: '次', reading: 'つぎ', romajiHint: 'tsugi' },
+        ],
+      };
+      const host = document.querySelector('#game-host');
+      const game = mountFusumaGame({
+        host, project, manifest, audioManager,
+        createEngine: createTypingEngine,
+        convertRomaji: romajiToHiragana,
+        createEventController: createFusumaEventController,
+      });
+
+      const shadowStylesheet = host.shadowRoot.querySelector('link[rel="stylesheet"]');
+      if (!shadowStylesheet.sheet) {
+        await new Promise((resolve, reject) => {
+          shadowStylesheet.addEventListener('load', resolve, { once: true });
+          shadowStylesheet.addEventListener('error', () => reject(new Error('fusuma stylesheet failed to load')), { once: true });
+        });
+      }
+
+      report('renderer mounts a shadow root', Boolean(host.shadowRoot));
+      const frame = host.shadowRoot.querySelector('.game-frame');
+      const ratio = frame.getBoundingClientRect().width / frame.getBoundingClientRect().height;
+      report('preview keeps a 16:9 frame', Math.abs(ratio - (16 / 9)) < 0.01, String(ratio));
+      report('page styles do not hide shadow stage', getComputedStyle(host.shadowRoot.querySelector('.stage')).display !== 'none');
+      const frameRect = frame.getBoundingClientRect();
+      const rightLeafRect = host.shadowRoot.querySelector('.leaf-right').getBoundingClientRect();
+      report('closed fusuma covers the right half inside the frame',
+        rightLeafRect.left >= frameRect.left + (frameRect.width * 0.45)
+        && rightLeafRect.right <= frameRect.right + 1,
+        `frame=${frameRect.left.toFixed(1)}..${frameRect.right.toFixed(1)}, right=${rightLeafRect.left.toFixed(1)}..${rightLeafRect.right.toFixed(1)}`);
+
+      const stage = host.shadowRoot.querySelector('.stage');
+      const roomWrap = host.shadowRoot.querySelector('[data-role="room-wrap"]');
+      const leftLeaf = host.shadowRoot.querySelector('.leaf-left');
+      const quiz = host.shadowRoot.querySelector('[data-role="quiz"]');
+      const answerCard = host.shadowRoot.querySelector('[data-role="answer-card"]');
+
+      const nearDetail = leftLeaf.querySelector('.door-detail');
+      const travelDetail = roomWrap.querySelector('.door-detail');
+      await Promise.all([travelDetail, nearDetail, roomWrap.querySelector('.room-image')].map(img => img.decode()));
+      function visibleWoodWidth(img, sourceY) {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth; canvas.height = 1;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, sourceY, img.naturalWidth, 1, 0, 0, img.naturalWidth, 1);
+        const pixels = ctx.getImageData(0, 0, canvas.width, 1).data;
+        const dark = [];
+        for(let x=Math.floor(canvas.width/2)-80; x<canvas.width/2+80; x++) {
+          if((pixels[x*4]+pixels[x*4+1]+pixels[x*4+2])/3 < 135) dark.push(x);
+        }
+        const rect = img.getBoundingClientRect();
+        const coverScale = Math.max(rect.width/img.naturalWidth, rect.height/img.naturalHeight);
+        return (dark.at(-1)-dark[0]+1) * coverScale;
+      }
+      roomWrap.classList.add('is-forward');
+      await new Promise(requestAnimationFrame);
+      const animations = roomWrap.getAnimations({subtree:true});
+      for(const animation of animations) { animation.pause(); animation.currentTime=manifest.timings.travelMs*0.5; }
+      const midwayOpacity = Number(getComputedStyle(travelDetail).opacity);
+      report('texture blends during approach instead of switching at arrival', midwayOpacity > 0 && midwayOpacity < 1, String(midwayOpacity));
+      for(const animation of animations) animation.currentTime=manifest.timings.travelMs*0.96;
+      report('texture fade is complete before the arrival timer shows the question', getComputedStyle(travelDetail).opacity === '1');
+      for(const animation of animations) animation.finish();
+      const arrivedRect = travelDetail.getBoundingClientRect();
+      const nearRect = nearDetail.getBoundingClientRect();
+      report('moving and fixed door textures have identical source, size and position at arrival',
+        nearDetail.src === travelDetail.src
+        && ['left','top','width','height'].every(key => Math.abs(nearRect[key]-arrivedRect[key]) < 1));
+      const roomImg = roomWrap.querySelector('.room-image');
+      const roomWood = visibleWoodWidth(roomImg, Math.round(roomImg.naturalHeight*0.35));
+      const detailWood = visibleWoodWidth(travelDetail, Math.round(travelDetail.naturalHeight*0.5));
+      report('photographic and close-up center wood widths match during the fade', Math.abs(roomWood-detailWood) < 1, `${roomWood.toFixed(2)}px / ${detailWood.toFixed(2)}px`);
+      roomWrap.classList.remove('is-forward');
+
+      game.start();
+      report('initial travel zooms the room before the first question', roomWrap.classList.contains('is-forward') && quiz.hidden);
+      report('initial travel keeps the fusuma hidden', getComputedStyle(leftLeaf).opacity === '0');
+      await wait(130);
+      report('first fusuma appears closed only after arrival', getComputedStyle(leftLeaf).opacity === '1' && !stage.classList.contains('is-open'));
+      report('question appears after travel', host.shadowRoot.querySelector('[data-role="question"]').textContent === '答えは？');
+
+      const input = host.shadowRoot.querySelector('[data-role="input"]');
+      const form = host.shadowRoot.querySelector('form');
+      input.value = 'kan';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      report('typing preview leaves a trailing n unsettled', host.shadowRoot.querySelector('[data-role="kana-preview"]').textContent === 'かn');
+
+      input.value = 'matigai';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      report('wrong answer reveals a correction hint', host.shadowRoot.querySelector('[data-role="feedback"]').textContent.includes('こたえ'));
+
+      input.value = 'kotae';
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      report('correct answer is shown before the fusuma opens',
+        !answerCard.hidden && !stage.classList.contains('is-open'));
+
+      await wait(70);
+      report('fusuma opens after the answer pause', stage.classList.contains('is-open'));
+
+      await wait(160);
+      report('next travel hides the old fusuma while the room moves forward',
+        stage.classList.contains('is-moving')
+        && roomWrap.classList.contains('is-forward')
+        && !stage.classList.contains('is-at-door')
+        && quiz.hidden,
+        `stage=${stage.className}; room=${roomWrap.className}; quizHidden=${quiz.hidden}`);
+      report('correct answer remains visible while travelling to the next fusuma', !answerCard.hidden);
+      await wait(130);
+      report('next closed fusuma and question appear only after arrival',
+        getComputedStyle(leftLeaf).opacity === '1'
+        && !stage.classList.contains('is-open')
+        && answerCard.hidden
+        && host.shadowRoot.querySelector('[data-role="question"]').textContent === '次の答えは？');
+
+      input.value = 'tsugi';
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      await wait(70);
+      report('last main-round answer opens its fusuma first',
+        stage.classList.contains('is-open'),
+        `stage=${stage.className}`);
+
+      await wait(160);
+      const resultCard = host.shadowRoot.querySelector('[data-role="result-card"]');
+      const resultBackground = host.shadowRoot.querySelector('[data-role="result-background"]');
+      report('a missed item travels to review before the result',
+        stage.classList.contains('is-moving')
+        && resultCard.hidden
+        && !resultBackground.src
+        && !answerCard.hidden);
+
+      await wait(130);
+      report('review question appears before the clear sequence',
+        stage.classList.contains('is-at-door')
+        && !stage.classList.contains('is-open')
+        && host.shadowRoot.querySelector('[data-role="question"]').textContent === '答えは？'
+        && host.shadowRoot.querySelector('[data-role="status"]').textContent.startsWith('復習'));
+
+      input.value = 'kotae';
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      await wait(70);
+      report('last review answer opens the final question fusuma first', stage.classList.contains('is-open'));
+
+      await wait(160);
+      report('clear sequence travels once more before showing the outdoor result',
+        stage.classList.contains('is-moving')
+        && resultCard.hidden
+        && !resultBackground.src
+        && !answerCard.hidden);
+
+      await wait(90);
+      report('final travel arrives at a closed fusuma while the last answer fades',
+        stage.classList.contains('is-at-door')
+        && !stage.classList.contains('is-open')
+        && answerCard.classList.contains('is-fading')
+        && resultCard.hidden,
+        `stage=${stage.className}; answer=${answerCard.className}; resultHidden=${resultCard.hidden}`);
+
+      await wait(60);
+      const stageRectAtResult = stage.getBoundingClientRect();
+      const initialResultRect = resultCard.getBoundingClientRect();
+      const initialResultCenterX = (initialResultRect.left + initialResultRect.width / 2 - stageRectAtResult.left) / stageRectAtResult.width;
+      const initialResultCenterY = (initialResultRect.top + initialResultRect.height / 2 - stageRectAtResult.top) / stageRectAtResult.height;
+      report('result first appears centered in front of a closed fusuma',
+        !resultCard.hidden
+        && !resultCard.classList.contains('is-compact')
+        && stage.classList.contains('is-at-door')
+        && !stage.classList.contains('is-open')
+        && Math.abs(initialResultCenterX - 0.5) < 0.03
+        && Math.abs(initialResultCenterY - 0.5) < 0.03
+        && initialResultRect.width / stageRectAtResult.width > 0.65
+        && initialResultRect.width / stageRectAtResult.width < 0.71,
+        `stage=${stage.className}; result=${resultCard.className}; hidden=${resultCard.hidden}; center=${initialResultCenterX.toFixed(3)},${initialResultCenterY.toFixed(3)}; width=${(initialResultRect.width / stageRectAtResult.width).toFixed(3)}`);
+
+      await wait(270);
+      const stageRectRevealed = stage.getBoundingClientRect();
+      const compactResultRect = resultCard.getBoundingClientRect();
+      const compactWidthRatio = compactResultRect.width / stageRectRevealed.width;
+      const compactHeightRatio = compactResultRect.height / stageRectRevealed.height;
+      const compactCenterY = (
+        compactResultRect.top
+        + compactResultRect.height / 2
+        - stageRectRevealed.top
+      ) / stageRectRevealed.height;
+      const compactMobile = stageRectRevealed.width <= 600;
+      report('outdoor reveal opens the fusuma and moves a compact panel to the bottom',
+        stage.classList.contains('is-open')
+        && resultCard.classList.contains('is-compact')
+        && getComputedStyle(resultBackground).display !== 'none'
+        && (compactMobile
+          ? compactWidthRatio > 0.78 && compactWidthRatio < 0.82
+          : compactWidthRatio > 0.63 && compactWidthRatio < 0.69)
+        && compactCenterY > 0.88
+        && compactCenterY < 0.93
+        && compactHeightRatio < (compactMobile ? 0.24 : 0.16),
+        `stage=${stage.className}; result=${resultCard.className}; mobile=${compactMobile}; width=${compactWidthRatio.toFixed(3)}; centerY=${compactCenterY.toFixed(3)}; height=${compactHeightRatio.toFixed(3)}`);
+
+      game.restart(project);
+      report('restart cancels prior audio and timers', audioCalls.some(([name]) => name === 'stopAll'));
+
+      for (const tier of ['storm', 'rain', 'cloudy', 'sunny', 'clear']) {
+        const tierHost = document.createElement('div');
+        tierHost.style.width = '160px';
+        document.body.append(tierHost);
+        const fakeEngineFactory = ({ onEvent }) => ({
+          start() {
+            onEvent({ type: 'game:start', detail: {}, snapshot: {} });
+            onEvent({ type: 'result:shown', detail: { tier, rate: tier === 'clear' ? 100 : 50, firstTryCorrect: 1, total: 2, reviewCount: 1 }, snapshot: {} });
+          },
+          replay() {}, submitRomaji() {}, completeTravel() {}, completeDoorSequence() {},
+        });
+        const tierGame = mountFusumaGame({
+          host: tierHost, project, manifest, audioManager,
+          createEngine: fakeEngineFactory,
+          convertRomaji: romajiToHiragana,
+          createEventController: createFusumaEventController,
+        });
+        tierGame.start();
+        await wait(
+          manifest.timings.travelMs
+          + manifest.timings.resultArrivalMs
+          + manifest.timings.resultRevealMs
+          + 30,
+        );
+        const resultImage = tierHost.shadowRoot.querySelector('[data-role="result-background"]');
+        report(`${tier} result uses its mapped background`, resultImage.src === manifest.assets.images[tier]);
+        tierGame.destroy();
+        tierHost.remove();
+      }
+
+      game.destroy();
+    } catch (error) {
+      report('browser test module loads', false, error.stack || error.message);
+    }
+
+    document.body.dataset.status = failures === 0 ? 'passed' : 'failed';
+    document.title = failures === 0 ? 'PASS — DEKIRU Browser Tests' : `FAIL (${failures}) — DEKIRU Browser Tests`;
+  </script>
+</body>
+</html>

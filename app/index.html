@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="DEKIRU Game Creatorで授業用ゲームを作成します">
+  <title>DEKIRU Game Creator</title>
+  <link rel="stylesheet" href="./shared/tokens.css">
+  <link rel="stylesheet" href="./top/top.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">
+      <span class="temporary-logo" aria-hidden="true">D</span>
+      <span><b>DEKIRU</b><small>Game Creator</small></span>
+    </div>
+    <span class="prototype-badge">Prototype</span>
+  </header>
+
+  <main class="top-layout" data-role="top-layout">
+    <aside class="game-types" aria-labelledby="game-type-title">
+      <div class="section-heading"><span>STEP 1</span><h1 id="game-type-title">GAME TYPE</h1><p>作りたいゲームの種類を選びます。</p></div>
+      <div class="game-type-list" id="game-type-list">
+        <button class="game-type-card selected" type="button" data-game-type="typing" aria-pressed="true">
+          <span class="game-icon">⌨</span><span><b>Typing</b><small>タイピング</small></span><i>✓</i>
+        </button>
+        <button class="game-type-card soon" type="button" data-game-type="true-false" data-label="○× Quiz" data-status="soon" aria-pressed="false" aria-disabled="true">
+          <span class="game-icon">○×</span><span><b>○× Quiz</b><small>まる・ばつクイズ</small></span><em>Coming Soon</em>
+        </button>
+        <button class="game-type-card soon" type="button" data-game-type="four-choice" data-label="4 Choice Quiz" data-status="soon" aria-pressed="false" aria-disabled="true">
+          <span class="game-icon">4</span><span><b>4 Choice Quiz</b><small>4択クイズ</small></span><em>Coming Soon</em>
+        </button>
+        <button class="game-type-card soon" type="button" data-game-type="matching" data-label="Matching" data-status="soon" aria-pressed="false" aria-disabled="true">
+          <span class="game-icon">↔</span><span><b>Matching</b><small>組み合わせ</small></span><em>Coming Soon</em>
+        </button>
+        <button class="game-type-card soon" type="button" data-game-type="builder" data-label="Builder" data-status="soon" aria-pressed="false" aria-disabled="true">
+          <span class="game-icon">＋</span><span><b>Builder</b><small>自由に組み立て</small></span><em>Coming Soon</em>
+        </button>
+      </div>
+    </aside>
+
+    <section class="templates" aria-labelledby="template-title">
+      <div class="template-heading">
+        <div class="section-heading"><span>STEP 2</span><h2 id="template-title">TEMPLATES</h2><p>Typingの見た目と演出を選びます。</p></div>
+        <span class="selected-label">Typing 選択中</span>
+      </div>
+
+      <article class="featured-template" data-template="fusuma" aria-pressed="true">
+        <div class="fusuma-preview" aria-label="和室の襖が閉じているプレビュー">
+          <div class="preview-room"></div>
+          <div class="preview-door left"><i></i></div>
+          <div class="preview-door right"><i></i></div>
+          <span>Typing</span>
+        </div>
+        <div class="template-copy">
+          <span class="recommended">おすすめ</span>
+          <h3>和室・襖</h3>
+          <p>問題に答えて、襖を開けながら和室を進みます。正解できなかった問題は最後にもう一度復習できます。</p>
+          <ul><li>タイピング</li><li>復習ループ</li><li>5段階の結果演出</li></ul>
+          <a class="create-button" data-action="create-fusuma" href="../Typing/creator/index.html?gameType=typing&amp;template=fusuma">このテンプレートで作る <span>→</span></a>
+        </div>
+      </article>
+
+      <div class="future-heading"><h3>今後追加予定</h3><span>テーマを少しずつ増やしていきます</span></div>
+      <div class="future-grid" id="template-list">
+        <button class="future-card" type="button" data-status="soon" data-label="洋室・扉" aria-disabled="true"><span class="placeholder-art western">▥</span><b>洋室・扉</b><small>Coming Soon</small></button>
+        <button class="future-card" type="button" data-status="soon" data-label="古代遺跡" aria-disabled="true"><span class="placeholder-art ruins">▰</span><b>古代遺跡</b><small>Coming Soon</small></button>
+        <button class="future-card" type="button" data-status="soon" data-label="宇宙船" aria-disabled="true"><span class="placeholder-art space">✦</span><b>宇宙船</b><small>Coming Soon</small></button>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" data-role="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+  <script type="module" src="./top/top.js"></script>
+</body>
+</html>

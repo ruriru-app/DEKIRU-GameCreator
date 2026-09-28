@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="DEKIRU Game CreatorのTyping教材作成画面">
+  <title>Typing「和室・襖」を作る｜DEKIRU Game Creator</title>
+  <link rel="stylesheet" href="../../app/shared/tokens.css">
+  <link rel="stylesheet" href="./creator.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="../../app/index.html" aria-label="DEKIRU Game Creator トップへ">
+      <span class="temporary-logo" aria-hidden="true">D</span>
+      <span><b>DEKIRU</b><small>Game Creator</small></span>
+    </a>
+    <div class="current-template"><span>Typing</span><b>和室・襖</b></div>
+    <a class="back-link" href="../../app/index.html">← トップへ戻る</a>
+  </header>
+
+  <main class="creator-layout" data-role="creator-layout">
+    <section class="editor-pane" aria-labelledby="editor-title">
+      <div class="pane-heading">
+        <div><span class="eyebrow">EDIT</span><h1 id="editor-title">タイピング問題を作る</h1></div>
+        <span class="save-state" data-role="save-state" role="status">未保存</span>
+      </div>
+
+      <label class="field-block" for="set-title">
+        <span>セット名</span>
+        <input id="set-title" data-role="set-title" maxlength="80" autocomplete="off">
+      </label>
+
+      <section class="project-tools" aria-labelledby="project-tools-title">
+        <h2 id="project-tools-title">続きから編集するために</h2>
+        <div class="project-actions">
+          <button class="secondary-button" type="button" data-action="save-project">問題セットを保存</button>
+          <button class="secondary-button" type="button" data-action="open-project">問題セットを開く</button>
+        </div>
+        <p>編集中でも保存できます。編集用の <b>.dekiru.json</b> ファイルをダウンロードします。</p>
+        <small>児童に配るときは、画面下の「HTMLを書き出す」を使ってください。自動保存ではありません。</small>
+        <input type="file" data-role="project-file" accept=".dekiru.json,.json,application/json" aria-label="編集用の問題セットファイル" hidden>
+        <p class="project-error" data-role="project-error" role="alert" hidden></p>
+      </section>
+
+      <dialog class="project-dialog" data-role="project-confirm" aria-labelledby="project-confirm-title" aria-describedby="project-confirm-description" hidden>
+        <h2 id="project-confirm-title">この問題セットを開きますか？</h2>
+        <p class="project-file-summary" data-role="project-summary"></p>
+        <p id="project-confirm-description">現在のセット名・問題・音量設定を置き換えます。まだ保存していない内容や、貼り付け欄の内容は失われます。</p>
+        <p>残したい場合は「キャンセル」で戻り、先に「問題セットを保存」を押してください。</p>
+        <div class="project-actions">
+          <button class="secondary-button" type="button" data-action="cancel-project-open" autofocus>キャンセル</button>
+          <button class="secondary-button" type="button" data-action="confirm-project-open">置き換えて開く</button>
+        </div>
+      </dialog>
+
+      <section class="paste-card" aria-labelledby="paste-title">
+        <div class="section-title-row">
+          <div><h2 id="paste-title">表からまとめて読み込む</h2><p>Excelやスプレッドシートの3列をコピーして貼り付けます。</p></div>
+          <span class="column-guide">問題｜正解｜よみ</span>
+        </div>
+        <label class="sr-only" for="paste-input">問題、正解、よみの3列データ</label>
+        <textarea id="paste-input" data-role="paste-input" rows="5" placeholder="問題文&#9;表示する正解&#9;ひらがなのよみ"></textarea>
+        <div class="paste-actions">
+          <button class="secondary-button" type="button" data-action="load-paste">問題を読み込む</button>
+          <span>タブ区切り・1行1問</span>
+        </div>
+        <div class="replace-confirm" data-role="replace-confirm" hidden>
+          <p>現在の問題を、貼り付けた内容に置き換えますか？</p>
+          <div><button type="button" data-action="confirm-replace">置き換える</button><button type="button" data-action="cancel-replace">キャンセル</button></div>
+        </div>
+        <div class="import-errors" data-role="import-errors" role="alert" aria-live="polite"></div>
+      </section>
+
+      <section class="question-section" aria-labelledby="question-list-title">
+        <div class="section-title-row question-list-heading">
+          <div><h2 id="question-list-title">問題一覧</h2><p><b data-role="question-count">0</b>問</p></div>
+          <span>よみからローマ字を自動生成</span>
+        </div>
+        <div class="question-list" data-role="question-list"></div>
+      </section>
+    </section>
+
+    <section class="preview-pane" aria-labelledby="preview-title">
+      <div class="preview-toolbar">
+        <div><span class="eyebrow">PREVIEW</span><h2 id="preview-title">和室・襖</h2></div>
+        <div class="preview-actions">
+          <span class="pending-badge" data-role="preview-dirty" hidden>変更あり</span>
+          <button class="secondary-button compact" type="button" data-action="restart-preview">↻ プレビューを再スタート</button>
+        </div>
+      </div>
+
+      <div class="preview-shell">
+        <div class="game-host" data-role="game-host"></div>
+      </div>
+
+      <div class="sound-controls" aria-label="音量設定">
+        <label for="volume">音量 <output data-role="volume-output">80%</output></label>
+        <input id="volume" data-role="volume" type="range" min="0" max="1" step="0.05" value="0.8">
+        <label class="mute-control"><input data-role="mute" type="checkbox"> ミュート</label>
+      </div>
+
+      <div class="preview-help"><b>編集しても、遊んでいる途中のゲームは止まりません。</b><span>変更内容は「プレビューを再スタート」で反映されます。</span></div>
+    </section>
+  </main>
+
+  <footer class="export-bar">
+    <div><span data-role="export-state">児童に配るゲームを作る</span><small>画像・音声を含む1つのHTMLにまとめます</small></div>
+    <button class="primary-button" type="button" data-action="export-html">HTMLを書き出す</button>
+  </footer>
+
+  <div class="toast" data-role="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+  <script type="module" src="./creator.js"></script>
+</body>
+</html>

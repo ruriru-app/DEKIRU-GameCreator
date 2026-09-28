@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><title>Project file tests</title>
+<style>body{font:15px system-ui;color:#55483c;margin:20px}iframe{width:390px;height:820px}li{margin:8px}.pass{color:#287a48}.fail{color:#b73737}</style>
+<body data-status="running"><h1>問題セット 保存・再読み込み</h1><ol id="results"></ol>
+<script type="module">
+const results = document.querySelector('#results');
+let failures = 0;
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+function check(name, pass) {
+  const item = document.createElement('li'); item.className = pass ? 'pass' : 'fail';
+  item.textContent = `${pass ? 'PASS' : 'FAIL'} — ${name}`; results.append(item);
+  if (!pass) failures++;
+}
+async function until(predicate) {
+  for (let n = 0; n < 600; n++) { if (predicate()) return; await wait(25); }
+  throw new Error('Waiting timed out');
+}
+let frame;
+try {
+  frame = document.createElement('iframe');
+  frame.src = '../Typing/creator/index.html?test=project-files';
+  const loaded = new Promise(resolve => frame.onload = resolve); document.body.append(frame); await loaded;
+  const win = frame.contentWindow, doc = frame.contentDocument;
+  await until(() => win.__DEKIRU_CREATOR__);
+  const store = win.__DEKIRU_CREATOR__.store;
+  const q = selector => doc.querySelector(selector);
+  const save = q('[data-action="save-project"]'), open = q('[data-action="open-project"]');
+  check('保存・開くボタンがキーボードで使える', !!save && !!open && save.tabIndex >= 0 && open.tabIndex >= 0);
+  if (!save || !open) throw new Error('Project file controls are not implemented');
+
+  // Keep actual Blob creation/serialization; intercept only the external download side effect.
+  const blobs = new Map(), downloads = [];
+  const createURL = win.URL.createObjectURL.bind(win.URL);
+  win.URL.createObjectURL = blob => { const url = createURL(blob); blobs.set(url, blob); return url; };
+  doc.addEventListener('click', event => {
+    if (event.target.tagName === 'A' && event.target.download) {
+      event.preventDefault(); downloads.push({ name: event.target.download, blob: blobs.get(event.target.href) });
+    }
+  });
+  function edit(selector, value) {
+    const field = q(selector); field.value = value; field.dispatchEvent(new win.Event('input', { bubbles: true }));
+  }
+  async function upload(text, name = '教材.dekiru.json') {
+    const transfer = new win.DataTransfer();
+    transfer.items.add(new win.File([text], name, { type: 'application/json' }));
+    q('[data-role="project-file"]').files = transfer.files;
+    q('[data-role="project-file"]').dispatchEvent(new win.Event('change', { bubbles: true }));
+    await until(() => !open.disabled);
+  }
+
+  edit('[data-role="set-title"]', '保存テスト <春>');
+  edit('[data-field="reading"]', '');
+  save.click();
+  check('入力途中でも編集用JSONが作成される', downloads.length === 1 && downloads[0].name.endsWith('.dekiru.json'));
+  const draftText = await downloads[0].blob.text();
+  check('空欄もそのまま保存される', JSON.parse(draftText).project.questions[0].reading === '');
+  check('保存してもプレビューは勝手に再スタートしない', !q('[data-role="preview-dirty"]').hidden && !store.getState().unsavedChanges);
+
+  edit('[data-field="reading"]', 'こんでんえいねんしざいほう');
+  edit('[data-role="volume"]', '0.35');
+  q('[data-role="mute"]').checked = true; q('[data-role="mute"]').dispatchEvent(new win.Event('change', { bubbles: true }));
+  save.click();
+  const savedText = await downloads[1].blob.text();
+  const expected = store.getSnapshot();
+  edit('[data-role="set-title"]', '消えてはいけない変更');
+  const beforeInvalid = JSON.stringify(store.getSnapshot());
+  await upload('{invalid');
+  check('壊れたファイルでは編集中の内容を失わない', JSON.stringify(store.getSnapshot()) === beforeInvalid && q('[data-role="project-error"]').textContent.length > 0);
+  await upload(' '.repeat(5 * 1024 * 1024 + 1));
+  check('大きすぎるファイルも安全に拒否する', JSON.stringify(store.getSnapshot()) === beforeInvalid && q('[data-role="project-error"]').textContent.includes('5 MB'));
+
+  await upload(savedText);
+  check('開く前に置き換え確認が出る', !q('[data-role="project-confirm"]').hidden && JSON.stringify(store.getSnapshot()) === beforeInvalid);
+  q('[data-action="cancel-project-open"]').click();
+  check('キャンセルで内容を保持しフォーカスを戻す', JSON.stringify(store.getSnapshot()) === beforeInvalid && doc.activeElement === open);
+  await upload(savedText);
+  q('[data-action="confirm-project-open"]').click();
+  check('同じファイルを再選択して内容・順番・音量を復元できる', JSON.stringify(store.getSnapshot()) === JSON.stringify(expected) && q('[data-role="volume"]').value === '0.35' && q('[data-role="mute"]').checked);
+  check('読み込み直後は未保存扱いにならずプレビュー変更待ちになる', !store.getState().unsavedChanges && !q('[data-role="preview-dirty"]').hidden);
+  check('ファイルの文字はHTMLとして実行されない', q('[data-role="set-title"]').value === '保存テスト <春>');
+
+  edit('[data-role="set-title"]', '再編集した教材');
+  edit('[data-field="prompt"]', '再編集した一問目');
+  const unload = new win.Event('beforeunload', { cancelable: true }); win.dispatchEvent(unload);
+  check('保存後の再編集にはページ離脱警告がある', unload.defaultPrevented);
+  q('[data-action="restart-preview"]').click();
+  await until(() => q('[data-role="game-host"]').shadowRoot.querySelector('[data-role="question"]').textContent === '再編集した一問目');
+  check('明示的な再スタートで新しい教材がプレビューに反映される', q('[data-role="preview-dirty"]').hidden && !q('[data-role="game-host"]').shadowRoot.querySelector('form').hidden);
+  edit('[data-role="set-title"]', '書き出す教材');
+  const exportButton = q('[data-action="export-html"]'); exportButton.click();
+  edit('[data-role="set-title"]', '書き出し中の新しい変更');
+  await until(() => !exportButton.disabled);
+  const htmlDownload = downloads.find(item => item.name.endsWith('.html'));
+  const html = htmlDownload ? await htmlDownload.blob.text() : '';
+  check('再編集した教材から画像・音声込みHTMLを書き出せる', html.includes('書き出す教材') && html.includes('data:image/') && html.includes('data:audio/'));
+  check('書き出し中の編集は未書き出し・未保存のまま保持される', store.getState().dirty && store.getState().unsavedChanges && !q('[data-role="preview-dirty"]').hidden);
+  save.click();
+  const afterSave = new win.Event('beforeunload', { cancelable: true }); win.dispatchEvent(afterSave);
+  check('最新の編集用ファイル作成後は離脱警告が解除される', !afterSave.defaultPrevented);
+  frame.style.width = '320px'; await wait(60);
+  check('320pxでもボタンやフレームが横にはみ出さない', doc.documentElement.scrollWidth <= doc.documentElement.clientWidth);
+} catch (error) { check(error.stack || error.message, false); }
+finally { frame?.remove(); }
+document.body.dataset.status = failures ? 'failed' : 'passed';
+document.title = `${failures ? 'FAIL' : 'PASS'} — Project file tests`;
+</script></body></html>

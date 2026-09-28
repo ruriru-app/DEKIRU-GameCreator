@@ -1,0 +1,306 @@
+:host {
+  display: block;
+  color: #4d372a;
+  font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+button, input { font: inherit; }
+
+.game-frame {
+  container-type: inline-size;
+  --arrival-transform: scale(6) translateY(8%);
+  background: #21160f;
+  border-radius: var(--game-radius, 18px);
+  box-shadow: var(--game-shadow, 0 18px 44px rgb(79 50 32 / 20%));
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #21160f;
+}
+
+.room-wrap,
+.room-image,
+.result-background {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.room-wrap {
+  transform: scale(1);
+  transform-origin: 50% 42%;
+}
+
+/* Viewport at arrival: x=41 2/3%, y=27%, size=16 2/3% of the room.
+   Both PNGs are 1672px wide. The photographed center wood is 16px wide;
+   the close-up wood is 52px. Mapping the detail to 16/52 of the room width
+   aligns that wood at every zoom level (not merely the image centers).
+   The larger detail extends beyond the final viewport, so no edge appears. */
+.door-detail {
+  position: absolute;
+  left: calc(100% * 9 / 26);
+  top: 25.5%;
+  width: calc(100% * 4 / 13);
+  height: calc(100% * 4 / 13);
+  object-fit: cover;
+}
+
+.door-world {
+  position: absolute;
+  top: 0;
+  width: 200%;
+  height: 100%;
+  transform-origin: 50% 42%;
+  transform: var(--arrival-transform);
+}
+
+/* Keep the photographic room intact at a distance. Resolve fine paper detail
+   only near arrival, in the same registered position used by both leaves. */
+.room-wrap .door-detail { opacity: 0; }
+.room-wrap.is-forward .door-detail {
+  animation: resolve-door-detail var(--travel-duration, 3.2s) linear forwards;
+}
+
+.room-wrap.is-forward {
+  animation: travel-forward var(--travel-duration, 3.2s) cubic-bezier(.38,.02,.16,1) forwards;
+}
+
+.room-image,
+.result-background { object-fit: cover; }
+.result-background { z-index: 1; }
+
+.leaf {
+  position: absolute;
+  z-index: 6;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  transition: transform var(--door-duration, 1.3s) cubic-bezier(.55,.08,.28,.95);
+  filter: drop-shadow(0 0 12px rgb(36 19 9 / 35%));
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.leaf-left { left: 0; transform-origin: left center; }
+.leaf-left .door-world { left: 0; }
+.leaf-right { right: 0; transform-origin: right center; }
+.leaf-right .door-world { right: 0; }
+.stage.is-at-door .leaf { opacity: 1; }
+.stage.is-open .leaf-left { transform: translateX(-101%); }
+.stage.is-open .leaf-right { transform: translateX(101%); }
+
+.status {
+  position: absolute;
+  z-index: 12;
+  top: 3%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: .45em 1.1em;
+  border-radius: 999px;
+  color: #fff;
+  background: rgb(80 57 40 / 72%);
+  font-size: clamp(10px, 2.2vw, 18px);
+  font-weight: 800;
+  letter-spacing: .08em;
+  backdrop-filter: blur(6px);
+}
+
+.quiz-panel,
+.answer-card {
+  position: absolute;
+  z-index: 14;
+  left: 50%;
+  top: 50%;
+  width: min(80%, 760px);
+  max-height: 78%;
+  overflow-y: auto;
+  transform: translate(-50%, -50%);
+  padding: clamp(8px, 2.2cqw, 26px);
+  border: 2px solid rgb(122 110 101 / 30%);
+  border-radius: clamp(12px, 2vw, 22px);
+  background: rgb(255 253 245 / 94%);
+  box-shadow: 0 18px 50px rgb(43 25 13 / 32%);
+  text-align: center;
+}
+
+.result-card {
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  top: 50%;
+  width: 68%;
+  transform: translate(-50%, -50%);
+  transform-origin: center;
+  padding: 28px;
+  border: 2px solid rgb(122 110 101 / 30%);
+  border-radius: clamp(12px, 2vw, 22px);
+  background: rgb(255 253 245 / 94%);
+  box-shadow: 0 18px 50px rgb(43 25 13 / 32%);
+  text-align: center;
+  transition:
+    top var(--result-transition-duration, 1.25s) cubic-bezier(.55, .02, .18, 1),
+    transform var(--result-transition-duration, 1.25s) cubic-bezier(.55, .02, .18, 1),
+    width var(--result-transition-duration, 1.25s) cubic-bezier(.55, .02, .18, 1),
+    padding var(--result-transition-duration, 1.25s) cubic-bezier(.55, .02, .18, 1);
+}
+
+.question {
+  margin: 0 0 .75em;
+  color: #4e3e33;
+  font-size: clamp(13px, 2.7cqw, 29px);
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+.kana-preview {
+  min-height: 1.5em;
+  margin: 0 0 .4em;
+  color: #8b68ad;
+  font-size: clamp(12px, 2cqw, 22px);
+  font-weight: 800;
+}
+
+.input-label {
+  display: grid;
+  gap: .4em;
+  color: #7a6e65;
+  font-size: clamp(10px, 1.4cqw, 15px);
+  font-weight: 700;
+}
+
+.input-label input {
+  width: 100%;
+  min-height: 2em;
+  padding: .45em .7em;
+  border: 3px solid #b59ad9;
+  border-radius: .65em;
+  outline: none;
+  color: #4e3e33;
+  background: #fff;
+  font-size: clamp(16px, 2.5cqw, 28px);
+  text-align: center;
+}
+
+.input-label input:focus { box-shadow: 0 0 0 4px rgb(181 154 217 / 30%); }
+.feedback { min-height: 1.4em; margin: .7em 0 0; color: #9a635b; font-size: clamp(10px, 1.8vw, 15px); }
+/* Persistent feedback and one-shot motion must not share the same state. */
+.quiz-panel.is-wrong,
+.quiz-panel.is-input-warning {
+  border-color: #e58b32;
+  box-shadow: 0 0 0 1px #e58b32, 0 0 0 3px #f3c07855, 0 18px 50px rgb(43 25 13 / 32%);
+}
+.quiz-panel.is-shaking { animation: shake .24s linear; }
+
+.answer-card span { color: #8e70b4; font-weight: 900; letter-spacing: .12em; }
+.answer-card strong { display: block; margin: .3em 0; color: #5b4434; font-size: clamp(22px, 5vw, 46px); }
+.answer-card small { color: #7a6e65; font-size: clamp(12px, 2.2vw, 20px); }
+.answer-card.is-fading { animation: answer-fade .32s ease forwards; }
+
+.result-card strong {
+  display: block;
+  margin: 0 0 10px;
+  color: #5b4434;
+  font-size: clamp(28px, 5vw, 58px);
+}
+
+.result-card [data-role="result-text"] {
+  margin: 7px 0;
+  color: #4d372a;
+  font-size: 18px;
+}
+
+.result-card button,
+.start-cover {
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: #9c7fc5;
+  box-shadow: 0 7px 0 #74569d;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.result-card button { padding: .7em 1.8em; }
+
+.result-card.is-compact {
+  top: 91%;
+  width: 66%;
+  padding: 7px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.result-card.is-compact strong { display: none; }
+
+.result-card.is-compact [data-role="result-text"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.result-card.is-compact button {
+  margin: 0 0 0 18px;
+  padding: 6px 16px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.start-cover {
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: .85em 2.2em;
+  font-size: clamp(16px, 3vw, 28px);
+}
+
+@keyframes travel-forward { to { transform: var(--arrival-transform); } }
+@keyframes resolve-door-detail { 0%, 40% { opacity: 0; } 90%, 100% { opacity: 1; } }
+@keyframes shake { 25% { transform: translate(-52%, -50%); } 75% { transform: translate(-48%, -50%); } }
+@keyframes answer-fade { to { opacity: 0; transform: translate(-50%, -50%) scale(.96); } }
+
+@media (max-width: 600px) {
+  .result-card.is-compact {
+    top: 90%;
+    width: 70%;
+    padding: 5px 9px;
+  }
+
+  .result-card.is-compact [data-role="result-text"] { gap: 10px; font-size: 12px; }
+  .result-card.is-compact button { margin-left: 10px; padding: 4px 11px; font-size: 12px; }
+}
+
+@container (max-width: 600px) {
+  .question { margin-bottom: .35em; line-height: 1.4; }
+  .kana-preview:empty { display: none; }
+  .input-label { gap: .15em; }
+  .feedback { margin: .3em 0 0; font-size: 10px; }
+  .result-card { padding: 12px; }
+  .result-card strong { font-size: clamp(19px, 5cqw, 30px); }
+  .result-card [data-role="result-text"] { font-size: 12px; }
+  .result-card.is-compact { width: 80%; top: 89%; padding: 5px 8px; }
+  .result-card.is-compact [data-role="result-text"] { gap: 8px; font-size: clamp(9px, 2.5cqw, 12px); }
+  .result-card.is-compact button { margin-left: 8px; padding: 4px 8px; font-size: clamp(9px, 2.5cqw, 12px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-wrap.is-forward { animation-duration: .15s; }
+  .room-wrap.is-forward .door-detail { animation-duration: .15s; }
+  .leaf { transition-duration: .15s; }
+  .result-card { transition-duration: .15s; }
+  .quiz-panel.is-shaking { animation: none; }
+}
