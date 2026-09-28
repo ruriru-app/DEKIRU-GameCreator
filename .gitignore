@@ -4,6 +4,10 @@
 /outputs/
 /work/
 /.worktrees/
+/supabase/.temp/
+/supabase/.branches/
+/supabase/.env
+/supabase/.env.*
 *.dekiru.json
 # Local verification notes can contain machine paths
 /tests/acceptance-results.md
