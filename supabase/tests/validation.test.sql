@@ -1,0 +1,20 @@
+begin;
+\ir helpers/setup.sql
+select is(private.validate_project(pg_temp.project(200)::text,'publish')->>'ok','true','200 questions accepted');
+select is(private.validate_project(pg_temp.project(201)::text,'publish')->'error'->>'code','LIMIT','201 questions rejected');
+select is(private.validate_project(pg_temp.project(0)::text,'draft')->>'ok','true','empty draft accepted');
+select is(private.validate_project(pg_temp.project(0)::text,'publish')->'error'->>'code','VALIDATION','empty publication rejected');
+select is(private.validate_project((pg_temp.project()||'{"title":""}')::text,'draft')->>'ok','true','blank draft accepted');
+select is(private.validate_project((pg_temp.project()||'{"title":""}')::text,'publish')->'error'->>'code','VALIDATION','blank title rejected for publication');
+select is(private.validate_project((pg_temp.project()||jsonb_build_object('title',repeat('😀',80)))::text,'publish')->>'ok','true','80 unicode codepoints accepted');
+select is(private.validate_project((pg_temp.project()||jsonb_build_object('title',repeat('😀',81)))::text,'publish')->'error'->>'code','LIMIT','81 unicode codepoints rejected');
+select is(private.validate_project((pg_temp.project()||'{"ownerId":"someone"}')::text,'draft')->'error'->>'code','VALIDATION','unknown field rejected');
+select is(private.validate_project((pg_temp.project()||'{"templateId":"evil"}')::text,'draft')->'error'->>'code','VALIDATION','unregistered template rejected');
+select is(private.validate_project(jsonb_set(pg_temp.project(),'{settings,volume}','1.01')::text,'draft')->'error'->>'code','VALIDATION','volume range enforced');
+select is(private.validate_project(jsonb_set(pg_temp.project(),'{settings,muted}','"false"')::text,'draft')->'error'->>'code','VALIDATION','boolean type enforced');
+select is(private.validate_project(jsonb_set(pg_temp.project(2),'{questions,1,id}','"q-1"')::text,'draft')->'error'->>'code','VALIDATION','duplicate IDs rejected');
+select is(private.validate_project(jsonb_set(pg_temp.project(),'{questions,0,prompt}',to_jsonb(E'\n\t'::text))::text,'publish')->'error'->>'code','VALIDATION','blank prompt rejected');
+select is(private.validate_project(replace(pg_temp.project()::text,'問題','\u0000'),'draft')->'error'->>'code','VALIDATION','NUL rejected safely');
+select is(private.validate_project(replace(pg_temp.project()::text,'問題','\ud800'),'draft')->'error'->>'code','VALIDATION','unpaired surrogate rejected safely');
+select * from finish();
+rollback;
