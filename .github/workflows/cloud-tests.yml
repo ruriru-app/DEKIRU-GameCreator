@@ -30,5 +30,6 @@ jobs:
             exit 1
           fi
       - run: supabase test db
+      - run: node --test tests/integration/cloud-db.test.mjs
       - if: always()
         run: supabase stop --no-backup
