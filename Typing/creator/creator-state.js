@@ -41,12 +41,21 @@ export function createProjectStore(initialProject, { idFactory = () => crypto.ra
     },
     getState,
     getSnapshot,
-    loadProject(loadedProject) {
+    loadProject(loadedProject, { source = 'file' } = {}) {
+      if (!['file','cloud','temporary'].includes(source)) throw new Error('Unknown project source');
       project = clone(loadedProject);
       dirty = true;
       previewDirty = true;
-      unsavedChanges = false;
-      hasProjectFile = true;
+      unsavedChanges = source !== 'file';
+      hasProjectFile = source === 'file';
+      notify();
+    },
+    restoreEditingSession({ project: restoredProject, fileState }) {
+      if (['dirty','previewDirty','unsavedChanges','hasProjectFile'].some(key => typeof fileState?.[key] !== 'boolean')) {
+        throw new Error('Invalid editing state');
+      }
+      project = clone(restoredProject);
+      ({dirty,previewDirty,unsavedChanges,hasProjectFile}=fileState);
       notify();
     },
     markSaved(snapshot = project) {

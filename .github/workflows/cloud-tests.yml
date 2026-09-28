@@ -27,6 +27,7 @@ jobs:
           if ! supabase start > /tmp/dekiru-local-start.log 2>&1; then
             echo "::error::Temporary local service startup failed."
             grep -Ei 'error|failed|invalid' /tmp/dekiru-local-start.log | head -n 15
+            grep -A 90 -B 2 'SQLSTATE' /tmp/dekiru-local-start.log | head -n 100
             exit 1
           fi
       - run: supabase test db
