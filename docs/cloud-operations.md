@@ -8,6 +8,7 @@
 - 所有者承認済みの専用Supabase：`DEKIRU-GameCreator` / `xrqgsujvduyxtrbegzri` / 東京 / ruriru Free。
 - Google Cloud：`DEKIRU-GameCreator` / `dekiru-gamecreator`。所有者がAuth Platformの初期設定とOAuthクライアント作成を完了し、接続情報をSupabaseへ直接登録した。Google providerのEnabled表示、Site URLと完全一致のcallback、新規登録OFFの保存を確認した。所有者が試用ユーザーを管理画面から追加済み。メール本文・アドレス・ユーザーID・秘密情報はこの公開リポジトリに記録しない。実際のGoogleログインはまだ未検証。
 - `core/cloud/config.js` は `enabled:false` のまま。実際のGoogleログイン、クラウド保存、公開URLは未接続。
+- 最新：所有者がHMAC秘密と接続元モードを保存済み。共有入口→DBの空検索は404で正常完了し、匿名からの内部RPC直接呼出しは拒否された。手元のconfigへ既存Publishable keyと固定URLだけを入力済み。enabled:false/main未変更を維持し、本人限定の公開サイト反映承認と本物のOAuth・教材保存試験を待つ。以下の準備経過にある「未設定」はこの最新記録を優先する。
 - 既存FUERU、Fドライブの原本、稼働中の旧プレビュー、完成済み襖ランタイムは変更しない。
 - カード登録、有料契約、無料トライアル申込み、容量の有料追加は、今回の承認に含まれない。無料枠が足りなければ止めて相談する。
 - Email providerは所有者が無効化済み。Googleだけを有効にし、新規登録と匿名登録はOFF。所有者が初期設定migrationを実行し、成功表示とprivateの7表を確認済み。初期設定SQLは再実行しない。現在の残作業：ホストの権限試験・匿名公開API・短期記録除去の実行確認、アプリの接続設定と実環境試験。既存の公開可能キーはあるが未反映。Cronは所有者が導入し、毎時の除去ジョブ1件の登録を確認済み。初回実行前のため成功履歴はまだ確認していない。設定済みと動作確認済みを混同しない。確認記録は `docs/cloud-acceptance.md`。
@@ -19,7 +20,7 @@
 3. migrationの対象が専用プロジェクトであることと差分を確認してから適用。既存DBをresetしない。現在の `supabase/config.toml` はCI内の一時DB専用であり、ホストの設定を完成させるファイルではない。
 4. Google provider以外と匿名登録を無効にし、戻り先を完全一致で設定する。Google側の承認済みリダイレクトURIはSupabaseの `https://xrqgsujvduyxtrbegzri.supabase.co/auth/v1/callback`。アプリへの戻り先は別で、`https://ruriru-app.github.io/DEKIRU-GameCreator/app/account/callback.html`。ワイルドカードや任意のreturnToを許可しない。[Google接続の公式手順](https://supabase.com/docs/guides/auth/social-login/auth-google)
 5. 権限は `openid email profile` のみ。PKCEと同じタブの保存領域を使用。Googleの「テスト中」は、基本プロフィールだけのログインではテストユーザー限定を保証しない。「所有者だけの試験」とする場合は、認証側で登録者を制限する方法を別途確認し、未確認のままインターネットへ有効化しない。[Googleの対象設定](https://support.google.com/cloud/answer/15549945?hl=en)
-6. 匿名閲覧用Edge Functionの起動部分は実装済み、ホストには未配置。秘密管理、信頼できる接続元アドレス、下記の短期記録削除ジョブを設定・実測する。任意の `X-Forwarded-For` や `X-Real-IP` をそのまま信用して公開しない。
+6. 匿名閲覧用Edge Functionは実装・ホスト配置済み。所有者がshared-gameだけJWT検証をOFFにし、実匿名GETで未設定時503・固定CORS・no-storeを確認した。秘密管理、信頼できる接続元アドレス、下記の短期記録削除ジョブを設定・実測する。任意の `X-Forwarded-For` や `X-Real-IP` をそのまま信用して公開しない。
 7. 正式な公開URL・公開可能キーだけを設定へ反映。`sb_secret_…`、service_role JWT、OAuth client secret、DB password、HMAC secretはホストの秘密管理に限る。GitHub、チャット、画面キャプチャ、ブラウザー用JSへ記載しない。
 8. 所有者A／別の承認済み検証者B／未ログインの3者で実環境試験を行う。別アカウントを勝手に作らない。共有URLの発行・別ブラウザーの再生・更新・停止・削除を実測する。
 9. 広い一般公開前に、問い合わせ先、削除・報告窓口、バックアップ保持期間、専用オリジンの採否を所有者が確定する。現在は本人利用の準備段階。Google用の連絡先承認を、Webページへのメールアドレス公開の承認とみなさない。
@@ -47,11 +48,13 @@ DBはGitHub Actionsの一時的なローカルSupabaseだけで `supabase test d
 `supabase/functions/shared-game/entry.ts` が起動元、`server.js` がホスト環境の読出しと2本の固定RPCへの通信、`client-address.js` が接続元の正規化と日替わりHMAC、`handler.js` が既存の応答処理。上記のビルドで生成する `index.ts` は外部importのない単一ファイルで、秘密情報を含めない。サーバー専用SDKの追加はせず、標準fetchから固定されたREST RPCだけを呼び出す。
 
 - `SUPABASE_URL` と `SUPABASE_SECRET_KEYS` の `default` はホスト注入値だけを使用。後者が存在しない旧環境のみ `SUPABASE_SERVICE_ROLE_KEY` を利用する。不正な新形式を旧形式へ黙ってフォールバックしない。[公式の環境変数](https://supabase.com/docs/guides/functions/secrets)
-- `DEKIRU_RATE_HMAC_KEY` は32バイト以上のランダムな秘密を所有者がホストに登録する。Googleのパスワードを使わず、コード・会話・画像に出さない。まだ登録していない。
+- `DEKIRU_RATE_HMAC_KEY` は32バイト以上のランダムな秘密を所有者がホストに登録する。Googleのパスワードを使わず、コード・会話・画像に出さない。2026-09-29、所有者による登録成功を確認済み。値そのものは読まない。
 - `DEKIRU_CLIENT_IP_MODE` は**未設定のまま**にする。このホストへの全経路で `CF-Connecting-IP` が信頼できる入口により上書きされ、任意の転送ヘッダーで偽装できないことを根拠と実測で確認した後にのみ、`cloudflare-verified` を設定する。この設定値そのものは信頼性を証明しない。Cloudflare一般のヘッダー仕様だけをSupabase固有の保証として扱わない。[ヘッダー仕様](https://developers.cloudflare.com/fundamentals/reference/http-headers/)
 - 設定不足・接続元不明・不正な設定なら503で閉じ、DBに接続しない。ブラウザーやリクエストからモードや秘密を指定できない。X-Forwarded-For／X-Real-IPへの代替も行わない。
+
+2026-09-29の実測：標準の専用HTTPS入口では、外部指定のCF-Connecting-IPが403で拒否され、X-Forwarded-For／X-Real-IP指定時も通常要求と同じcf_connecting_ipが実行記録に残った。詳細と根拠は受け入れ記録を参照。本人限定の接続試験用にモードの入力だけを準備し、所有者の保存待ち。一般公開やDB通信の成功は未判定。独自ドメイン・プロキシ追加時はこの判定を流用しない。
 - 1回のRPCは本文の受信を含め5秒で中断し、自動再試行はしない。2本ともサーバー内の認証情報を使い、呼出し元のAuthorization等を転送しない。生のIPはDBへ送信・記録せず、日付で変わるHMACだけを渡す。
-- 匿名アクセス用のJWT検証設定は、配置時に所有者が目的を確認して確定する。現時点ではホスト設定を変更していない。起動部のローカル試験を、実際のDeno実行・Supabase入口・Googleログインの検証と混同しない。
+- 匿名アクセス用のJWT検証設定は、所有者がshared-gameだけOFFで保存済み。ホストでのアプリ固有の未設定時503応答を、DB接続・公開データ取得やGoogleログインの検証と混同しない。
 
 ## 利用者の操作
 
@@ -88,6 +91,8 @@ DB管理者だけが `private.service_control` の単一行を変更できる。
 利用量急増時は、まず原因と無料枠の残量を確認し、必要な列だけ停止する。費用を増やして復旧させない。通常運用へ戻す前に負荷・所有者権限・600回/分境界を確認する。`enabled:false` の静的ページ変更だけでは、すでに配信したAPIへのアクセスを止められない。
 
 ## 期限切れ記録の除去
+
+更新：2026-09-29 14:00 (+0900)の既存ジョブ初回実行がSucceeded、Active、次回15:00と管理画面で確認済み。以下の登録時点の「未検証」はこの結果で更新する。保持期間境界の実データ試験は引き続き未実施。
 
 DB関数 `private.purge_expired_cloud_records()` は、期限到来した操作ID記録と、作成から23時間以上経過した公開読取りカウンターを削除する。関数・Cron拡張・毎時のジョブはホストに登録済み、実行結果は未検証。公開読取りカウンターは日付入りHMACで、生のIPを保存しない。
 

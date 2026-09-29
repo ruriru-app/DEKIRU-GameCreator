@@ -1,6 +1,9 @@
 export const publicConfig = Object.freeze({
-  enabled:false, supabaseUrl:'', publishableKey:'',
-  appBaseUrl:'https://ruriru-app.github.io/DEKIRU-GameCreator/', sharedEndpoint:'',
+  enabled:true,
+  supabaseUrl:'https://xrqgsujvduyxtrbegzri.supabase.co',
+  publishableKey:'sb_publishable_4I5Vq-KPrENNRPUMRnSOyw_G7-SryKL',
+  appBaseUrl:'https://ruriru-app.github.io/DEKIRU-GameCreator/',
+  sharedEndpoint:'https://xrqgsujvduyxtrbegzri.supabase.co/functions/v1/shared-game',
 });
 export function readCloudConfig(value = publicConfig) {
   const keys = ['enabled','supabaseUrl','publishableKey','appBaseUrl','sharedEndpoint'];

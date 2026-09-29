@@ -6,8 +6,12 @@ import { readCloudConfig } from '../core/cloud/config.js';
 import { projectWith } from './fixtures/cloud-projects.mjs';
 const id = 'G7m2Pk8wQ4t9R3vX6nYzAa';
 const endpoint = 'https://project.supabase.co/functions/v1/shared-game';
-test('cloud configuration defaults off and rejects privileged keys or arbitrary fields', () => {
-  assert.equal(readCloudConfig().enabled,false);
+test('approved trial configuration is valid, can be disabled, and rejects privileged keys or arbitrary fields', () => {
+  const configured=readCloudConfig();
+  assert.equal(configured.enabled,true);
+  assert.equal(configured.supabaseUrl,'https://xrqgsujvduyxtrbegzri.supabase.co');
+  assert.match(configured.publishableKey,/^sb_publishable_/);
+  assert.equal(readCloudConfig({...configured,enabled:false}).enabled,false);
   assert.throws(() => readCloudConfig({enabled:true,serviceRoleKey:'secret'}));
 });
 test('owner mutations forward stable retry IDs and optimistic versions without owner identity', async () => {
