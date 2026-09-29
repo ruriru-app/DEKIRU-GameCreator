@@ -1,0 +1,42 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Library tests</title>
+<link rel="stylesheet" href="../app/shared/tokens.css"><link rel="stylesheet" href="../app/account/account.css">
+<body data-status="running"><h1>マイゲームの画面テスト</h1><ol id="results"></ol><main id="library" style="width:320px;max-width:100%"></main>
+<script type="module">
+let failures=0;
+const root=document.querySelector('#library'),results=document.querySelector('#results'),wait=()=>new Promise(r=>setTimeout(r,25));
+function check(name,pass){const li=document.createElement('li');li.textContent=(pass?'PASS':'FAIL')+' — '+name;results.append(li);if(!pass)failures++;}
+try{
+ const {mountAccountPage}=await import('../app/account/account.js');
+ const {ok,failure}=await import('../core/cloud/contracts.js');
+ let user={id:'A',email:'test@example.invalid'},authListener,calls=[],failed=false;
+ const row={id:'10000000-0000-4000-8000-000000000001',version:2,title:'<img src=x onerror=alert(1)>',questionCount:2,updatedAt:'2026-09-29T00:00:00Z',publication:{shareId:'G7m2Pk8wQ4t9R3vX6nYzAa',status:'published',version:1,sourceVersion:1,runtimeVersion:'fusuma-1'},publicationDirty:true};
+ const auth={getUser:async()=>ok(user),subscribe:fn=>{authListener=fn;return()=>{};},signOut:async()=>{user=null;authListener(null);return ok(null);}};
+ const api={getContext:async()=>ok({limits:{games:20,publications:10},counts:{games:1,publications:1}}),listGames:async()=>failed?failure('NETWORK'):ok([structuredClone(row)]),
+  setPublished:async args=>{calls.push(args);row.version++;row.publication.status=args.published?'published':'stopped';return ok(structuredClone(row));},
+  deleteGame:async args=>{calls.push(args);return ok({id:row.id,deleted:true});}};
+ const ui=mountAccountPage({root,auth,api,configured:true,appBaseUrl:'https://ruriru-app.github.io/DEKIRU-GameCreator/',copyText:async()=>{throw Error('denied');}});
+ await ui.ready;
+ check('自分の一覧と枠を表示し、題名のHTMLは実行しない',root.querySelectorAll('[data-game]').length===1&&root.textContent.includes('1 / 20')&&!root.querySelector('img'));
+ check('編集リンクは固定ページと教材IDだけ',root.querySelector('[data-action="edit"]').href==='https://ruriru-app.github.io/DEKIRU-GameCreator/Typing/creator/index.html?game=10000000-0000-4000-8000-000000000001');
+ root.querySelector('[data-action="delete"]').click();await wait();root.querySelector('[data-choice="cancel"]').click();await wait();
+ check('削除をキャンセルすると通信しない',calls.length===0&&root.querySelectorAll('[data-game]').length===1);
+ root.querySelector('[data-action="copy"]').click();await wait();
+ check('コピー拒否時は手動コピー可能',root.querySelector('[data-share-url]').value.length===75&&root.textContent.includes('手動'));
+ check('320pxでも一覧は横にはみ出さない',root.scrollWidth<=root.clientWidth+1);
+ root.querySelector('[data-action="unpublish"]').click();await wait();
+ check('公開停止も確認後だけ実行する',calls.length===0&&root.querySelector('dialog')?.open);
+ root.querySelector('[data-choice="confirm"]').click();await wait();
+ check('停止後は同じゲームに再開ボタン',root.querySelector('[data-action="republish"]')&&calls[0].expectedVersion===2);
+ root.querySelector('[data-action="delete"]').click();await wait();root.querySelector('[data-choice="confirm"]').click();await wait();
+ check('確認した削除が成功してから一覧から除去',!root.querySelector('[data-game]')&&calls.at(-1).expectedVersion===3);
+ failed=true;root.querySelector('[data-action="refresh"]').click();await wait();
+ check('通信失敗は教材0件として表示しない',root.textContent.includes('取得できません')&&!root.textContent.includes('まだありません'));
+ failed=false;root.querySelector('[data-action="refresh"]').click();await wait();
+ root.querySelector('[data-action="delete"]').click();await wait();authListener({id:'B'});await wait();
+ check('別アカウントへ切り替わると確認を取り消す',!root.querySelector('dialog')&&calls.length===2);
+ authListener(null);await wait();
+ check('ログアウトで一覧・共有URLを消去',!root.querySelector('[data-game]')&&!root.querySelector('[data-share-url]')&&root.querySelector('[data-action="login"]'));
+ ui.destroy();
+}catch(error){check('例外なく完走: '+error.message,false);}
+document.body.dataset.status=failures?'fail':'pass';document.title=failures?'FAIL: library':'PASS: library';
+</script></body></html>
