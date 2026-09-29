@@ -9,6 +9,9 @@ import { createFusumaEventController } from '../templates/fusuma/event-controlle
 import { mountFusumaGame } from '../templates/fusuma/renderer.js';
 import { createProjectStore } from './creator-state.js';
 import { downloadProject, parseProjectFile, MAX_PROJECT_BYTES } from './project-file.js';
+import {createCloudState} from '../../core/cloud/cloud-state.js';
+import {loadBrowserCloud} from '../../core/cloud/browser-client.js';
+import {mountCloudControls} from './cloud-controls.js';
 
 const typingSchema = [
   { key: 'prompt', label: '問題', required: true },
@@ -76,6 +79,10 @@ let toastTimer = null;
 let exporting = false;
 let pendingProject = null;
 let readingProject = false;
+let appliedPasteText = '';
+let authNavigation = false;
+let cloudControls = null;
+const cloudState = createCloudState({getProject:store.getSnapshot});
 const game = mountFusumaGame({
   host: elements.gameHost,
   project: store.getSnapshot(),
@@ -262,7 +269,17 @@ elements.projectConfirm.addEventListener('cancel', event => {
 });
 document.querySelector('[data-action="confirm-project-open"]').addEventListener('click', () => {
   if (!pendingProject) return;
+  cloudControls?.detach();
   store.loadProject(pendingProject);
+  syncProjectFields();
+  elements.paste.value = '';
+  appliedPasteText = '';
+  closeProjectConfirmation();
+  elements.title.focus();
+  showToast('問題セットを開きました。ゲームへの反映は「プレビューを再スタート」で行えます。');
+});
+
+function syncProjectFields() {
   const project = store.getSnapshot();
   elements.title.value = project.title;
   elements.volume.value = String(project.settings.volume);
@@ -270,15 +287,11 @@ document.querySelector('[data-action="confirm-project-open"]').addEventListener(
   elements.mute.checked = project.settings.muted;
   game.setVolume(project.settings.volume);
   game.setMuted(project.settings.muted);
-  elements.paste.value = '';
   pendingImport = null;
   elements.confirm.hidden = true;
   renderQuestions();
   renderImportErrors(projectErrors());
-  closeProjectConfirmation();
-  elements.title.focus();
-  showToast('問題セットを開きました。ゲームへの反映は「プレビューを再スタート」で行えます。');
-});
+}
 
 function mapImportedRows(rows) {
   return rows.map((row) => {
@@ -299,6 +312,7 @@ function applyPendingImport() {
   renderQuestions();
   elements.confirm.hidden = true;
   pendingImport = null;
+  appliedPasteText = elements.paste.value;
   showToast('貼り付けた問題を読み込みました。');
 }
 
@@ -430,9 +444,29 @@ renderQuestions();
 updateMeta(store.getState());
 
 window.addEventListener('beforeunload', (event) => {
-  if (!store.getState().unsavedChanges) return;
+  if (authNavigation) return;
+  const unappliedPaste=elements.paste.value!==appliedPasteText?elements.paste.value:'';
+  const warn=cloudControls?cloudControls.shouldWarnOnLeave():Boolean(store.getState().unsavedChanges||unappliedPaste.trim());
+  if (!warn) return;
   event.preventDefault();
   event.returnValue = '';
 });
 
 window.__DEKIRU_CREATOR__ = { store, game, manifest };
+
+void (async()=>{
+  const cloud=await loadBrowserCloud();
+  const incoming=new URL(location.href),ids=incoming.searchParams.getAll('game');
+  const gameId=ids.length===1&&/^[0-9a-fA-F-]{36}$/.test(ids[0])?ids[0]:null;
+  cloudControls=mountCloudControls({
+    root:document.querySelector('[data-role="cloud-controls"]'),store,cloudState,...cloud,gameId,
+    getPasteText:()=>elements.paste.value,
+    getUnappliedPaste:()=>elements.paste.value!==appliedPasteText?elements.paste.value:'',
+    setPasteText:text=>{elements.paste.value=text;appliedPasteText='';},
+    onProjectLoaded:syncProjectFields,onAuthNavigation:value=>{authNavigation=value;},
+    returnTo:'Typing/creator/index.html'+(gameId?'?game='+gameId:''),
+  });
+  await cloudControls.ready;
+})().catch(()=>{
+  document.querySelector('[data-role="cloud-controls"]').textContent='オンライン機能を確認できませんでした。問題の編集・端末への保存・HTML書き出しは利用できます。';
+});

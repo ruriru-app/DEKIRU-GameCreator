@@ -39,6 +39,14 @@ test('owner and public requests time out in 15 seconds without automatic retries
   const request = fetchSharedGame({endpoint,shareId:id,fetchImpl:()=>new Promise(()=>{})});
   t.mock.timers.tick(15000); assert.equal((await request).error.code,'NETWORK');
 });
+
+test('SDK-returned fetch failures and gateway errors remain uncertain and retryable',async()=>{
+  for(const status of [0,502,503,504]){
+    const api=createOwnerApi({client:{rpc:async()=>({status,data:null,error:{code:'',message:'sensitive transport detail'}})}});
+    const result=await api.saveDraft({gameId:null,expectedVersion:0,project:projectWith(),requestId:crypto.randomUUID()});
+    assert.equal(result.error.code,'NETWORK');assert.doesNotMatch(result.error.message,/sensitive/);
+  }
+});
 test('public GET is anonymous and no-store; whitelisted data only', async () => {
   let call;
   const result=await fetchSharedGame({endpoint,shareId:id,fetchImpl:async(url,options)=>{

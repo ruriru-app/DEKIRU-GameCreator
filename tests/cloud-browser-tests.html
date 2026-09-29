@@ -1,0 +1,40 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><title>Cloud controls tests</title>
+<link rel="stylesheet" href="../app/shared/tokens.css"><link rel="stylesheet" href="../Typing/creator/creator.css">
+<body data-status="running"><h1>オンライン保存の画面テスト</h1><ol id="results"></ol><section id="controls" class="project-tools"></section>
+<script type="module">
+import {mountCloudControls} from '../Typing/creator/cloud-controls.js';
+import {createCloudState} from '../core/cloud/cloud-state.js';
+import {createProjectStore} from '../Typing/creator/creator-state.js';
+import {ok,failure} from '../core/cloud/contracts.js';
+const results=document.querySelector('#results'),root=document.querySelector('#controls');
+let failures=0;
+function check(name,value){const li=document.createElement('li');li.textContent=(value?'PASS':'FAIL')+' — '+name;results.append(li);if(!value)failures++;}
+const wait=()=>new Promise(r=>setTimeout(r,30));
+try{
+  const project={schemaVersion:1,title:'テスト教材',gameType:'typing',templateId:'fusuma',settings:{volume:.8,muted:false},questions:[{id:'1',prompt:'問題',displayAnswer:'正解',reading:'せいかい',romajiHint:'seikai'}]};
+  const store=createProjectStore(project),cloudState=createCloudState({getProject:store.getSnapshot});
+  let authListener,paste='',calls=[],user={id:'test-owner',email:'test@example.invalid'},saveResult=null;
+  const meta={id:'10000000-0000-4000-8000-000000000001',version:1,title:project.title,questionCount:1,publication:null,publicationDirty:false};
+  const auth={getUser:async()=>ok(user),subscribe:fn=>{authListener=fn;return()=>{};},signOut:async()=>{user=null;authListener(null);return ok(null);}};
+  const api={getContext:async()=>ok({counts:{games:1,publications:0},limits:{games:20,publications:10}}),
+    saveDraft:async args=>{calls.push(['save',args]);return saveResult||ok(meta);},
+    publishGame:async args=>{calls.push(['publish',args]);return ok({...meta,version:2,publication:{shareId:'G7m2Pk8wQ4t9R3vX6nYzAa',status:'published',version:1}});}};
+  const ui=mountCloudControls({root,store,cloudState,auth,api,getPasteText:()=>paste,setPasteText:t=>paste=t,configured:true,
+    appBaseUrl:'https://ruriru-app.github.io/DEKIRU-GameCreator/',storage:sessionStorage,
+    copyText:async()=>{throw Error('clipboard refused');}});
+  await ui.ready;const button=a=>root.querySelector('[data-cloud-action="'+a+'"]');
+  check('ログイン後に保存できる',!button('save').disabled);
+  button('save').click();await wait();check('保存のみでは公開しない',calls.length===1&&calls[0][0]==='save');
+  button('publish').click();await wait();check('公開前に確認を表示',root.querySelector('dialog')?.open&&calls.length===1);
+  root.querySelector('[data-choice="confirm"]').click();await wait();
+  check('短いURLを表示',root.querySelector('[data-cloud-url]').value.length===75);
+  button('copy').click();await wait();check('コピー拒否時は手動コピー案内',root.textContent.includes('手動でコピー'));
+  store.setTitle('変更');saveResult=failure('CONFLICT');button('save').click();await wait();
+  check('競合でも編集内容を保持',store.getSnapshot().title==='変更'&&root.textContent.includes('別の場所'));
+  saveResult=null;authListener(null);await wait();check('ログアウトでURLと旧状態を消す',!root.querySelector('[data-cloud-url]').value&&button('save').disabled);
+  ui.destroy();
+  const off=mountCloudControls({root,store,cloudState,auth,api,getPasteText:()=>'',setPasteText:()=>{},configured:false});
+  await off.ready;check('未設定時はオンラインだけ無効',button('save').disabled&&root.textContent.includes('準備中'));off.destroy();
+}catch(error){check('例外なく完走: '+error.message,false);}
+document.body.dataset.status=failures?'fail':'pass';document.title=failures?'FAIL: cloud controls':'PASS: cloud controls';
+</script></body></html>

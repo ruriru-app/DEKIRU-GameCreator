@@ -10,6 +10,9 @@ export function createOwnerApi({client}) {
       const timeout = new Promise((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new Error('timeout'));},15000);});
       const request = client.rpc(name,args);
       const response = await Promise.race([request.abortSignal ? request.abortSignal(controller.signal) : request, timeout]);
+      // postgrest-js resolves fetch failures with status 0 instead of throwing.
+      // Gateway failures also leave write success uncertain: preserve the retry id.
+      if(response.status===0 || response.status>=500) return failure('NETWORK');
       if (response.error) return failure(response.error.code === 'PGRST301' ? 'UNAUTHENTICATED' : 'SERVICE_UNAVAILABLE');
       const result = response.data;
       if (result?.ok === true) return {ok:true,data:result.data};
