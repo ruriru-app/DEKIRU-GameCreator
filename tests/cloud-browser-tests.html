@@ -6,6 +6,8 @@ import {mountCloudControls} from '../Typing/creator/cloud-controls.js';
 import {createCloudState} from '../core/cloud/cloud-state.js';
 import {createProjectStore} from '../Typing/creator/creator-state.js';
 import {ok,failure} from '../core/cloud/contracts.js';
+import {saveAuthResume,RESUME_KEY} from '../core/cloud/auth-resume.js';
+import {memoryStorage} from './fixtures/memory-storage.mjs';
 const results=document.querySelector('#results'),root=document.querySelector('#controls');
 let failures=0;
 function check(name,value){const li=document.createElement('li');li.textContent=(value?'PASS':'FAIL')+' — '+name;results.append(li);if(!value)failures++;}
@@ -20,7 +22,7 @@ try{
     saveDraft:async args=>{calls.push(['save',args]);return saveResult||ok(meta);},
     publishGame:async args=>{calls.push(['publish',args]);return ok({...meta,version:2,publication:{shareId:'G7m2Pk8wQ4t9R3vX6nYzAa',status:'published',version:1}});}};
   const ui=mountCloudControls({root,store,cloudState,auth,api,getPasteText:()=>paste,setPasteText:t=>paste=t,configured:true,
-    appBaseUrl:'https://ruriru-app.github.io/DEKIRU-GameCreator/',storage:sessionStorage,
+    appBaseUrl:'https://ruriru-app.github.io/DEKIRU-GameCreator/',storage:memoryStorage(),
     copyText:async()=>{throw Error('clipboard refused');}});
   await ui.ready;const button=a=>root.querySelector('[data-cloud-action="'+a+'"]');
   check('ログイン後に保存できる',!button('save').disabled);
@@ -31,10 +33,42 @@ try{
   button('copy').click();await wait();check('コピー拒否時は手動コピー案内',root.textContent.includes('手動でコピー'));
   store.setTitle('変更');saveResult=failure('CONFLICT');button('save').click();await wait();
   check('競合でも編集内容を保持',store.getSnapshot().title==='変更'&&root.textContent.includes('別の場所'));
+  saveResult=failure('LIMIT');button('save').click();await wait();
+  check('保存枠超過でも編集内容と未保存状態を維持',store.getSnapshot().title==='変更'&&ui.editor.shouldWarnOnLeave()&&root.textContent.includes('上限'));
+  let finishSave;saveResult=new Promise(resolve=>finishSave=resolve);
+  const beforeDouble=calls.length;button('save').click();button('save').click();await wait();
+  check('連打しても保存通信は1件・実行中はボタンを無効化',calls.length===beforeDouble+1&&button('save').disabled);
+  finishSave(ok({...meta,version:3,title:'変更'}));await wait();
+  check('保存成功後だけ保存済みへ変わり、再操作可能',!button('save').disabled&&!ui.editor.shouldWarnOnLeave());
   saveResult=null;authListener(null);await wait();check('ログアウトでURLと旧状態を消す',!root.querySelector('[data-cloud-url]').value&&button('save').disabled);
   ui.destroy();
   const off=mountCloudControls({root,store,cloudState,auth,api,getPasteText:()=>'',setPasteText:()=>{},configured:false});
   await off.ready;check('未設定時はオンラインだけ無効',button('save').disabled&&root.textContent.includes('準備中'));off.destroy();
+  const flags={dirty:true,previewDirty:true,unsavedChanges:true,hasProjectFile:false};
+  const resume={project:{...project,title:'復元した下書き'},pasteText:'まだ反映していない\t答え\tこたえ',fileState:flags,
+    cloudLink:{ownerId:'owner-A',record:{...meta,project}},returnTo:'Typing/creator/index.html'};
+  async function resumeCase({storage,user=null,start=async()=>ok(null)}){
+    const s=createProjectStore(project),c=createCloudState({getProject:s.getSnapshot});let restoredPaste='';
+    const auth={getUser:async()=>ok(user),subscribe:()=>()=>{},startGoogleSignIn:start};
+    const mounted=mountCloudControls({root,store:s,cloudState:c,auth,api,storage,configured:true,
+      getPasteText:()=>restoredPaste,setPasteText:t=>restoredPaste=t});
+    await mounted.ready;return {mounted,s,c,paste:()=>restoredPaste};
+  }
+  const saved=memoryStorage();saveAuthResume(saved,resume);
+  const restored=await resumeCase({storage:saved});
+  check('ログイン中断でも下書きと未反映の貼り付けを復元',restored.s.getSnapshot().title==='復元した下書き'&&restored.paste()===resume.pasteText);
+  check('復元時に保存・プレビュー状態を偽らず、一時情報は一度で消去',Object.entries(flags).every(([k,v])=>restored.s.getState()[k]===v)&&saved.getItem(RESUME_KEY)===null);
+  check('未ログインへ復帰しても旧所有者には接続しない',restored.c.getState().gameMeta===null);restored.mounted.destroy();
+  const otherStorage=memoryStorage();saveAuthResume(otherStorage,resume);
+  const other=await resumeCase({storage:otherStorage,user:{id:'owner-B'}});
+  check('別アカウントへ復帰した下書きを旧教材IDへ上書きしない',other.s.getSnapshot().title==='復元した下書き'&&other.c.getState().gameMeta===null);other.mounted.destroy();
+  const oldStorage=memoryStorage();saveAuthResume(oldStorage,resume,0);
+  const old=await resumeCase({storage:oldStorage});
+  check('期限切れの退避内容で現在の教材を上書きしない',old.s.getSnapshot().title===project.title&&old.paste()===''&&oldStorage.getItem(RESUME_KEY)===null);old.mounted.destroy();
+  let signIns=0;
+  const blocked=await resumeCase({storage:{getItem:()=>null,removeItem(){},setItem(){throw Error('quota');}},start:async()=>{signIns++;return ok(null);}});
+  button('login').click();await wait();
+  check('一時保存できない場合はログインに移動せずファイル保存を案内',signIns===0&&blocked.s.getSnapshot().title===project.title&&root.textContent.includes('編集用ファイル'));blocked.mounted.destroy();
 }catch(error){check('例外なく完走: '+error.message,false);}
 document.body.dataset.status=failures?'fail':'pass';document.title=failures?'FAIL: cloud controls':'PASS: cloud controls';
 </script></body></html>

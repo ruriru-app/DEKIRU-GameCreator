@@ -18,6 +18,13 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.19.0'
+      - name: Install pinned build tools without lifecycle scripts
+        run: npm install --global pnpm@11.19.0 --ignore-scripts
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Rebuild and verify committed authentication bundle
+        run: |
+          node tools/build-cloud-sdk.mjs
+          git diff --exit-code -- vendor/supabase.js
       - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3.0.1
         with:
           version: 2.118.0
