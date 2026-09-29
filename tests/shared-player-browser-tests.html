@@ -1,0 +1,35 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><title>Shared player tests</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="../p/player.css"><style>html,body{overflow:auto}#results{position:relative;z-index:2;background:white;color:#514842}#player{height:540px;width:960px;max-width:100%}</style>
+<body data-status="running"><ol id="results"></ol><main id="player"></main>
+<script type="module">
+let failures=0;const results=document.querySelector('#results'),root=document.querySelector('#player');
+function check(name,pass){const li=document.createElement('li');li.textContent=(pass?'PASS':'FAIL')+' — '+name;results.append(li);if(!pass)failures++;}
+const until=async(predicate)=>{const deadline=Date.now()+7500;while(!predicate()){if(Date.now()>deadline)throw Error('画面遷移の時間超過');await new Promise(r=>setTimeout(r,25));}};
+try{
+ const {startSharedPlayer}=await import('../p/player.js');let stopped=false,requests=[];
+ const body={schemaVersion:1,publicationVersion:1,runtimeVersion:'fusuma-1',project:{schemaVersion:1,title:'共有テスト',gameType:'typing',templateId:'fusuma',settings:{volume:0,muted:true},questions:[{id:'a',prompt:'あを入力',displayAnswer:'亜',reading:'あ',romajiHint:'a'},{id:'i',prompt:'いを入力',displayAnswer:'伊',reading:'い',romajiHint:'i'}]}};
+ const player=await startSharedPlayer({host:root,pageUrl:'https://ruriru-app.github.io/DEKIRU-GameCreator/p/?g=G7m2Pk8wQ4t9R3vX6nYzAa',endpoint:'https://project.supabase.co/functions/v1/shared-game',fetchImpl:async(url,options)=>{requests.push({url,options});return new Response(JSON.stringify(stopped?{}:body),{status:stopped?404:200});}});
+ const shadow=root.querySelector('#game-host').shadowRoot,q=role=>shadow.querySelector('[data-role="'+role+'"]');
+ check('完成済みゲームが開始ボタンで起動を待つ',!q('start').hidden&&q('quiz').hidden);
+ q('start').click();check('最初に奥へ移動し、その間は出題しない',q('stage').classList.contains('is-moving')&&q('quiz').hidden);
+ await until(()=>!q('quiz').hidden);check('接近後に1問目を出す',q('question').textContent==='あを入力');
+ await until(()=>[...shadow.querySelectorAll('.room-image,.door-detail')].every(img=>img.complete&&img.naturalWidth>0));
+ check('画像は共有ページから同じサイトの素材を参照する',[...shadow.querySelectorAll('.room-image,.door-detail')].every(img=>img.src.startsWith(location.origin+'/Typing/templates/fusuma/assets/')));
+ const enter=value=>{q('input').value=value;q('input').dispatchEvent(new Event('input',{bubbles:true}));q('quiz').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));};
+ enter('a');check('正解の漢字を表示する',!q('answer-card').hidden&&q('answer').textContent==='亜');
+ await until(()=>q('stage').classList.contains('is-open'));check('正解後に襖が開く',q('quiz').hidden);
+ await until(()=>q('stage').classList.contains('is-moving'));check('襖の開放後に次の襖へ接近する',q('quiz').hidden);
+ await until(()=>!q('quiz').hidden);check('次問で不要な揺れが発生しない',q('question').textContent==='いを入力'&&!q('quiz').classList.contains('is-shaking'));
+ enter('i');await until(()=>q('stage').classList.contains('is-moving'));await until(()=>!q('result-card').hidden);
+ check('最後の襖まで接近してクリア景色と結果パネルを表示',!q('result-background').hidden&&q('stage').classList.contains('is-result'));
+ check('ゲームは枠なしでプレイヤー全体を使う',getComputedStyle(root.querySelector('#game-host')).getPropertyValue('--game-radius').trim()==='0px'&&Math.abs(shadow.querySelector('.game-frame').getBoundingClientRect().height-root.clientHeight)<=1);
+ check('教材取得は1回の匿名読取りだけ',requests.length===1&&requests[0].options.credentials==='omit'&&requests[0].options.method==='GET');
+ check('子どものページに認証SDKを読み込まない',!performance.getEntriesByType('resource').some(item=>item.name.includes('/vendor/supabase.js')||item.name.includes('/auth/v1/')));
+ window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));stopped=true;
+ check('離脱時はゲームを破棄して表示を止める',!shadow.querySelector('.stage')&&root.querySelector('#game-host').hidden);
+ window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));await until(()=>root.textContent.includes('現在公開されていません'));
+ check('戻る操作では再取得し、停止済みゲームを再表示しない',requests.length===2&&requests[1].options.cache==='no-store'&&root.querySelector('#game-host').hidden);
+ player.destroy();
+}catch(error){check('例外なく完走: '+error.message,false);}
+document.body.dataset.status=failures?'fail':'pass';document.title=failures?'FAIL: shared player':'PASS: shared player';
+</script></body></html>
