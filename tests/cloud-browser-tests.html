@@ -69,6 +69,47 @@ try{
   const blocked=await resumeCase({storage:{getItem:()=>null,removeItem(){},setItem(){throw Error('quota');}},start:async()=>{signIns++;return ok(null);}});
   button('login').click();await wait();
   check('一時保存できない場合はログインに移動せずファイル保存を案内',signIns===0&&blocked.s.getSnapshot().title===project.title&&root.textContent.includes('編集用ファイル'));blocked.mounted.destroy();
+
+  const backStorage=memoryStorage(),backStore=createProjectStore(project);
+  let navigating=false,backPaste='';
+  const backUi=mountCloudControls({root,store:backStore,cloudState:createCloudState({getProject:backStore.getSnapshot}),
+    auth:{getUser:async()=>ok(null),subscribe:()=>()=>{},startGoogleSignIn:async()=>ok(null)},api,
+    storage:backStorage,configured:true,getPasteText:()=>backPaste,setPasteText:t=>backPaste=t,
+    onAuthNavigation:value=>navigating=value});
+  await backUi.ready;backStore.setTitle('ログイン前');button('login').click();await wait();
+  check('ログイン移動前は下書きを退避',navigating&&backStorage.getItem(RESUME_KEY)!==null);
+  window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));await wait();
+  backStore.setTitle('戻ってからの新しい編集');
+  check('キャッシュした戻る画面で離脱保護と最新編集を維持',!navigating&&backUi.shouldWarnOnLeave()&&backStore.getSnapshot().title==='戻ってからの新しい編集');
+  check('戻る操作で旧ログイン退避を破棄し再読込みの上書きを防ぐ',backStorage.getItem(RESUME_KEY)===null);backUi.destroy();
+
+  const loadStore=createProjectStore(project);loadStore.markSaved();
+  let loadPaste='',resolveLoad;
+  const loadUi=mountCloudControls({root,store:loadStore,cloudState:createCloudState({getProject:loadStore.getSnapshot}),
+    auth:{getUser:async()=>ok({id:'owner-A'}),subscribe:()=>()=>{}},
+    api:{...api,loadGame:()=>new Promise(resolve=>resolveLoad=resolve)},storage:memoryStorage(),configured:true,
+    getPasteText:()=>loadPaste,setPasteText:t=>loadPaste=t,gameId:meta.id});
+  await wait();loadPaste='通信中に貼り付けた問題';
+  resolveLoad(ok({...meta,project:{...project,title:'オンラインの別教材'}}));await loadUi.ready;
+  check('オンライン読込み中に入力した貼り付け文を消さない',loadPaste==='通信中に貼り付けた問題');
+  check('貼り付け変更時は教材全体の置換も中断',loadStore.getSnapshot().title===project.title);loadUi.destroy();
+
+  const conflictStore=createProjectStore(project);let reloadCalls=0,copyArgs=null;
+  const conflictUi=mountCloudControls({root,store:conflictStore,cloudState:createCloudState({getProject:conflictStore.getSnapshot}),
+    auth:{getUser:async()=>ok({id:'owner-A'}),subscribe:()=>()=>{}},
+    api:{...api,loadGame:async()=>{reloadCalls++;return ok({...meta,version:5,project:{...project,title:'新しい保存版'}});},
+      saveDraft:async args=>{if(args.gameId)return failure('CONFLICT');copyArgs=args;return ok({...meta,id:'copy-id'});}},
+    storage:memoryStorage(),configured:true,getPasteText:()=>'',setPasteText:()=>{}});
+  await conflictUi.ready;conflictUi.editor.restoreLink({ownerId:'owner-A',record:{...meta,project}});
+  conflictStore.setTitle('手元の内容');button('save').click();await wait();
+  check('競合時に再読込みと別教材保存を案内',Boolean(button('reload')&&!button('reload').hidden&&button('save-copy')));
+  button('reload').click();await wait();root.querySelector('[data-choice="cancel"]').click();await wait();
+  check('再読込みをキャンセルすると手元を維持',reloadCalls===0&&conflictStore.getSnapshot().title==='手元の内容');
+  button('reload').click();await wait();root.querySelector('[data-choice="confirm"]').click();await wait();
+  check('確認後だけ新しい保存版とバージョンへ復帰',reloadCalls===1&&conflictStore.getSnapshot().title==='新しい保存版'&&conflictUi.editor.getState().gameMeta.version===5);
+  conflictStore.setTitle('コピーに残す内容');button('save').click();await wait();button('save-copy').click();await wait();
+  check('別教材保存では元の教材IDを送らず最新の手元内容を保存',copyArgs?.gameId===null&&copyArgs.expectedVersion===0&&copyArgs.project.title==='コピーに残す内容');
+  conflictUi.destroy();
 }catch(error){check('例外なく完走: '+error.message,false);}
 document.body.dataset.status=failures?'fail':'pass';document.title=failures?'FAIL: cloud controls':'PASS: cloud controls';
 </script></body></html>

@@ -81,3 +81,33 @@ test('resume link uses last saved snapshot, not unsaved local edits; leaving war
   s.store.markSaved();assert.equal(s.editor.shouldWarnOnLeave(''),false);
   assert.equal(s.editor.shouldWarnOnLeave('未反映の表'),true);
 });
+
+test('cloud load guards unapplied fields and commits field clearing in the same transaction',async()=>{
+  const gate=deferred(),s=setup({loadGame:()=>gate.promise});let paste='',commits=0;
+  const work=s.editor.load('game-a',{canReplace:()=>paste==='',onLoaded:()=>{commits++;paste='';}});
+  paste='newly pasted';gate.resolve(ok({...meta,project:projectWith(2)}));
+  assert.equal((await work).error.code,'CONFLICT');assert.equal(paste,'newly pasted');assert.equal(commits,0);
+  assert.equal(s.store.getSnapshot().questions.length,1);
+  paste='';await s.editor.load('game-a',{canReplace:()=>true,onLoaded:()=>commits++});
+  assert.equal(commits,1);assert.equal(s.store.getSnapshot().questions.length,2);
+});
+
+test('conflicting drafts can be saved as a separate copy without overwriting the original',async()=>{
+  const calls=[],s=setup({saveDraft:async args=>{calls.push(args);return args.gameId?failure('CONFLICT'):ok({...meta,id:'copy-id'});}});
+  await s.editor.load('game-a');s.store.setTitle('手元の変更');
+  assert.equal((await s.editor.save()).error.code,'CONFLICT');assert.equal(s.editor.getState().conflict,true);
+  assert.equal((await s.editor.saveCopy()).ok,true);
+  assert.equal(calls[1].gameId,null);assert.equal(calls[1].expectedVersion,0);
+  assert.equal(calls[1].project.title,'手元の変更');assert.equal(s.editor.getState().gameMeta.id,'copy-id');
+  assert.equal(s.editor.getState().conflict,false);
+});
+
+test('failed copy and failed reload keep the original link and live edits',async()=>{
+  const s=setup();await s.editor.load('game-a');s.store.setTitle('失わない変更');
+  s.api.saveDraft=async()=>failure('LIMIT');
+  assert.equal((await s.editor.saveCopy()).error.code,'LIMIT');
+  assert.equal(s.editor.getState().gameMeta.id,'game-a');assert.equal(s.store.getSnapshot().title,'失わない変更');
+  s.api.loadGame=async()=>failure('NETWORK');
+  assert.equal((await s.editor.load('game-a')).error.code,'NETWORK');
+  assert.equal(s.editor.getState().gameMeta.id,'game-a');assert.equal(s.store.getSnapshot().title,'失わない変更');
+});
