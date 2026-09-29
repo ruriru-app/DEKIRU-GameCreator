@@ -15,7 +15,7 @@ select ok(not has_function_privilege('anon','public.mutate_game(text,jsonb)','ex
 select ok(has_function_privilege('authenticated','public.mutate_game(text,jsonb)','execute'),'authenticated can call checked mutation');
 select ok(not has_function_privilege('authenticated','private.purge_expired_cloud_records()','execute'),'purge is privileged');
 select ok((select bool_and(relrowsecurity) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='private' and c.relkind='r'),'private tables also use RLS');
-select ok((select bool_and(proconfig @> array['search_path=']) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('creator_context','list_games','load_game','mutate_game')),'fixed empty search_path on public RPCs');
+select ok((select bool_and(proconfig @> array['search_path=""']) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('creator_context','list_games','load_game','mutate_game')),'fixed empty search_path on public RPCs');
 set local role authenticated;
 select is(public.creator_context()->'error'->>'code','UNAUTHENTICATED','missing identity fails closed');
 reset role;

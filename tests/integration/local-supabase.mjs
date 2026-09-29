@@ -12,7 +12,11 @@ export async function createLocalTestClients() {
     const response=await fetch(new URL(path,base),{method,redirect:'error',headers:{
       apikey:config.ANON_KEY,Authorization:'Bearer '+token,'Content-Type':'application/json',
     },...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(15000)});
-    if (!response.ok) return {data:null,error:{status:response.status}};
+    if (!response.ok) {
+      const body=await response.json().catch(()=>({}));
+      const code=typeof body.error_code==='string' && /^[a-z_]{1,80}$/.test(body.error_code)?body.error_code:'request_failed';
+      return {data:null,error:{status:response.status,code}};
+    }
     return {data:response.status===204?null:await response.json(),error:null};
   }
   const rpcClient=token=>({rpc:(name,args={})=>request('/rest/v1/rpc/'+name,token,args)});
@@ -22,7 +26,7 @@ export async function createLocalTestClients() {
     if (created.error || !created.data?.id) throw Error('Could not create local-only fixture user.');
     const id=created.data.id; made.push(id);
     const signed=await request('/auth/v1/token?grant_type=password',config.ANON_KEY,{email,password});
-    if (signed.error || !signed.data?.access_token) throw Error('Could not authenticate local fixture.');
+    if (signed.error || !signed.data?.access_token) throw Error('Could not authenticate local fixture: '+JSON.stringify(signed.error));
     return {...rpcClient(signed.data.access_token),id};
   }
   const admin={

@@ -16,7 +16,7 @@ update private.accounts set status='active';
 update test_game set meta=public.mutate_game('unpublish',pg_temp.command((meta->>'id')::uuid,2))->'data';
 select is(public.read_shared_game((select meta->'publication'->>'shareId' from test_game)),null,'stopped snapshot unavailable');
 select ok((public.consume_shared_read(repeat('a',64))->>'allowed')::boolean,'first read allowed');
-select public.consume_shared_read(repeat('a',64)) from generate_series(2,599);
+do $$ begin for i in 2..599 loop perform public.consume_shared_read(repeat('a',64)); end loop; end; $$;
 select ok((public.consume_shared_read(repeat('a',64))->>'allowed')::boolean,'600th read allowed');
 select ok(not (public.consume_shared_read(repeat('a',64))->>'allowed')::boolean,'601st read denied');
 select ok((public.consume_shared_read(repeat('b',64))->>'allowed')::boolean,'other connection has own allowance');

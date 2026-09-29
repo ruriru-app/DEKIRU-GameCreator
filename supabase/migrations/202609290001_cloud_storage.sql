@@ -228,7 +228,7 @@ end;
 $$;
 
 create function public.mutate_game(p_command text,p_args jsonb) returns jsonb language plpgsql security definer set search_path='' as $$
-declare a private.accounts; l private.plan_limits; prior private.requests; request_id uuid; fingerprint text; result jsonb;
+declare a private.accounts; l private.plan_limits; prior private.requests; v_request_id uuid; fingerprint text; result jsonb;
   v_now timestamptz=clock_timestamp(); current_minute timestamptz; current_day date;
 begin
   a:=private.account();
@@ -237,12 +237,12 @@ begin
   if a.status<>'active' then return private.fail('FORBIDDEN'); end if;
   select * into l from private.plan_limits where plan=a.plan;
   begin
-    if jsonb_typeof(p_args->'requestId')='string' then request_id:=(p_args->>'requestId')::uuid; end if;
-  exception when invalid_text_representation then request_id:=null;
+    if jsonb_typeof(p_args->'requestId')='string' then v_request_id:=(p_args->>'requestId')::uuid; end if;
+  exception when invalid_text_representation then v_request_id:=null;
   end;
-  if request_id is not null then
+  if v_request_id is not null then
     fingerprint:=encode(extensions.digest(coalesce(p_command,'')||':'||p_args::text,'sha256'),'hex');
-    select * into prior from private.requests r where r.owner_id=a.owner_id and r.request_id=mutate_game.request_id and r.expires_at>v_now;
+    select * into prior from private.requests r where r.owner_id=a.owner_id and r.request_id=v_request_id and r.expires_at>v_now;
     if prior.request_id is not null then
       if prior.fingerprint=fingerprint then return prior.result; end if;
       return private.fail('REQUEST_MISMATCH');
@@ -258,12 +258,12 @@ begin
     return private.fail('RATE_LIMIT')||jsonb_build_object('error',jsonb_build_object('code','RATE_LIMIT','message','Please wait','retryAfterSeconds',
       case when a.day_count>l.daily_writes then ceil(extract(epoch from ((current_day+1)::timestamp at time zone 'UTC')-v_now))::int else 60 end));
   end if;
-  if request_id is null then return private.fail('VALIDATION'); end if;
+  if v_request_id is null then return private.fail('VALIDATION'); end if;
   begin
     result:=private.apply_mutation(a.owner_id,p_command,p_args);
   exception when others then result:=private.fail('SERVICE_UNAVAILABLE');
   end;
-  insert into private.requests(owner_id,request_id,fingerprint,result) values(a.owner_id,request_id,fingerprint,result)
+  insert into private.requests(owner_id,request_id,fingerprint,result) values(a.owner_id,v_request_id,fingerprint,result)
     on conflict on constraint requests_pkey do update set fingerprint=excluded.fingerprint,result=excluded.result,expires_at=clock_timestamp()+interval '24 hours';
   return result;
 end;

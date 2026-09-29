@@ -25,5 +25,7 @@ site_url = "http://127.0.0.1:54321"
 enable_signup = false
 enable_anonymous_sign_ins = false
 [auth.email]
-enable_signup = false
+# Local test fixtures sign in with passwords; global signup above stays disabled.
+# This switch controls the whole email provider. Hosted Google-only setup is separate.
+enable_signup = true
 enable_confirmations = false
