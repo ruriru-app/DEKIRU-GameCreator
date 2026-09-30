@@ -26,7 +26,11 @@ function shellMarkup(manifest) {
         <div class="leaf leaf-right"><div class="door-world">${roomLayers(manifest.assets.images.fusumaRight)}</div></div>
         <div class="status" data-role="status">Typing</div>
         <form class="quiz-panel" data-role="quiz" hidden>
-          <p class="question" data-role="question"></p>
+          <div class="question-content" data-role="question-content">
+            <p class="question" data-role="question"></p>
+            <figure class="question-picture" data-role="question-picture" hidden></figure>
+            <p class="image-error" data-role="image-error" hidden></p>
+          </div>
           <p class="kana-preview" data-role="kana-preview" aria-live="polite"></p>
           <label class="input-label">ローマ字で入力
             <input data-role="input" autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -48,6 +52,68 @@ function shellMarkup(manifest) {
     </div>`;
 }
 
+function renderQuestionContent(root, question) {
+  const panel=root.querySelector('[data-role="quiz"]');
+  const text=root.querySelector('[data-role="question"]');
+  const picture=root.querySelector('[data-role="question-picture"]');
+  const error=root.querySelector('[data-role="image-error"]');
+  text.textContent=String(question?.prompt??'');
+  const image=question?.image;
+  error.hidden=true;error.textContent='';
+  panel.classList.toggle('has-image',Boolean(image));
+  picture.hidden=!image;
+  if(!image){picture.replaceChildren();delete panel.dataset.imagePlacement;return;}
+  const fail=()=>{
+    picture.replaceChildren();picture.hidden=true;
+    error.textContent=String(image.alt||'問題の画像')+'：画像を表示できません。作成者に確認してください。';
+    error.hidden=false;
+  };
+  // Files/export and cloud validate full headers. Recheck the display boundary
+  // without adding runtime imports to self-contained distributed HTML.
+  const source=image.dataUrl;
+  if(!['top','bottom','left','right'].includes(image.placement)||
+    !Number.isInteger(image.width)||!Number.isInteger(image.height)||
+    Math.min(image.width,image.height)<1||Math.max(image.width,image.height)>1280||
+    typeof source!=='string'||source.length>175000||
+    !/^data:image\/(?:jpeg|png);base64,(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(source)) {fail();return;}
+  const base64=source.slice(source.indexOf(',')+1);
+  const bytes=atob(base64);
+  if(!bytes.length||bytes.length>131072||btoa(bytes)!==base64||
+    (source.startsWith('data:image/png;')?!bytes.startsWith('\x89PNG\r\n\x1a\n'):!bytes.startsWith('\xff\xd8'))) {fail();return;}
+  panel.dataset.imagePlacement=image.placement;
+  let img=picture.querySelector('img');
+  if(!img){img=document.createElement('img');img.className='question-image';img.decoding='async';picture.append(img);}
+  img.alt=String(image.alt??'問題の画像');
+  img.onload=()=>{if(img.isConnected&&(img.naturalWidth!==image.width||img.naturalHeight!==image.height))fail();};
+  img.onerror=()=>{if(img.isConnected)fail();};
+  if(img.getAttribute('src')!==source)img.src=source;
+}
+
+export function mountFusumaQuestionPreview({host,project,questionId,manifest}) {
+  if(!(host instanceof Element))throw new TypeError('host must be an Element.');
+  const root=host.shadowRoot??host.attachShadow({mode:'open'});
+  root.innerHTML=shellMarkup(manifest);
+  root.querySelector('[data-role="stage"]').classList.add('is-at-door');
+  root.querySelector('[data-role="start"]').hidden=true;
+  const quiz=root.querySelector('[data-role="quiz"]'),input=root.querySelector('[data-role="input"]');
+  input.readOnly=true;input.tabIndex=-1;
+  const prevent=event=>event.preventDefault();
+  quiz.addEventListener('submit',prevent);
+  let destroyed=false;
+  function update({project,questionId}) {
+    if(destroyed)return;
+    const title=root.querySelector('[data-role="game-title"]');
+    title.textContent=String(project.title??'').trim()||'タイピングゲーム';title.title=title.textContent;
+    const index=project.questions.findIndex(q=>q.id===questionId),question=project.questions[index];
+    root.querySelector('[data-role="status"]').textContent=question?'問題 '+(index+1)+'/'+project.questions.length:'問題を選んでください';
+    renderQuestionContent(root,question);
+    quiz.hidden=!question;
+    if(question&&!question.prompt.trim())root.querySelector('[data-role="question"]').textContent='ここに問題文が表示されます';
+  }
+  update({project,questionId});
+  return {update,destroy(){destroyed=true;quiz.removeEventListener('submit',prevent);root.replaceChildren();}};
+}
+
 export function mountFusumaGame({
   host,
   project,
@@ -67,7 +133,6 @@ export function mountFusumaGame({
   const gameTitle = shadow.querySelector('[data-role="game-title"]');
   const roomWrap = shadow.querySelector('[data-role="room-wrap"]');
   const quiz = shadow.querySelector('[data-role="quiz"]');
-  const question = shadow.querySelector('[data-role="question"]');
   const kanaPreview = shadow.querySelector('[data-role="kana-preview"]');
   const input = shadow.querySelector('[data-role="input"]');
   const feedback = shadow.querySelector('[data-role="feedback"]');
@@ -164,7 +229,7 @@ export function mountFusumaGame({
     showQuestion(detail) {
       resetInputAssistance();
       const snapshot = engine.getSnapshot?.();
-      question.textContent = detail.question.prompt;
+      renderQuestionContent(shadow, detail.question);
       status.textContent = detail.round === 'review'
         ? `復習 ${Number(snapshot?.position ?? 0) + 1}/${snapshot?.queue?.length ?? 1}`
         : `問題 ${Number(snapshot?.position ?? 0) + 1}/${snapshot?.queue?.length ?? currentProject.questions.length}`;

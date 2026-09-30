@@ -1,3 +1,5 @@
+import {normalizeProjectData} from './project-format.js';
+
 const moduleSpecifiers = {
   audioManager: '@dekiru/audio-manager',
   romajiConverter: '@dekiru/romaji-converter',
@@ -88,6 +90,7 @@ export async function loadTemplateBundle(manifest, resourceLoader = createBrowse
 }
 
 export function buildStandaloneHtml({ project, bundle }) {
+  project = normalizeProjectData(project);
   const imports = {};
   for (const [name, source] of Object.entries(bundle.moduleSources)) {
     const specifier = moduleSpecifiers[name];

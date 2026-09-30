@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildStandaloneHtml, loadTemplateBundle, safeHtmlFilename } from '../core/html-exporter.js';
+import {imageProject} from './fixtures/question-images.mjs';
 
 const project = {
   schemaVersion: 1,
@@ -132,4 +133,11 @@ test('safeHtmlFilename removes Windows-invalid characters and never doubles the 
   const safe = safeHtmlFilename('算数:*?"<>|. ');
   assert.match(safe, /^算数_+\.html$/);
   assert.doesNotMatch(safe, /[<>:"/\\|?*]/);
+});
+
+test('image projects are embedded intact but untrusted image sources cannot be exported', () => {
+  const p=imageProject();
+  assert.deepEqual(extractJsonScript(buildStandaloneHtml({project:p,bundle:fixtureBundle}),'project-data'),p);
+  p.questions[0].image.dataUrl='https://example.invalid/tracking.png';
+  assert.throws(()=>buildStandaloneHtml({project:p,bundle:fixtureBundle}));
 });

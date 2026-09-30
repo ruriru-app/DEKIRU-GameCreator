@@ -323,6 +323,50 @@ button, input { font: inherit; }
   .game-title { padding: .3em .65em; -webkit-line-clamp: 1; }
 }
 
+/* Image-free questions retain the original flow and spacing. */
+.question-content { display: contents; }
+.quiz-panel.has-image {
+  height: 78%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.has-image .question-content {
+  container-type: size;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "picture" "question" "error";
+  align-content: start;
+  align-items: center;
+  gap: clamp(4px, 1cqw, 14px);
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin-bottom: clamp(4px, 1cqw, 12px);
+}
+.has-image .question { grid-area: question; margin: 0; overflow-wrap: anywhere; }
+.question-picture { grid-area: picture; margin: 0; min-width: 0; text-align: center; }
+.question-image { display: block; margin: auto; width: 100%; max-width: 480px; height: auto; max-height: min(42cqh, 240px); object-fit: contain; }
+.image-error { grid-area: error; color: #9a635b; font-size: 14px; margin: 0; }
+.has-image .input-label, .has-image .kana-preview, .has-image .feedback { flex-shrink: 0; }
+.has-image[data-image-placement="bottom"] .question-content { grid-template-areas: "question" "picture" "error"; }
+.has-image[data-image-placement="left"] .question-content {
+  grid-template-columns: minmax(0, 32fr) minmax(0, 68fr);
+  grid-template-areas: "picture question" "error error";
+}
+.has-image[data-image-placement="right"] .question-content {
+  grid-template-columns: minmax(0, 68fr) minmax(0, 32fr);
+  grid-template-areas: "question picture" "error error";
+}
+.has-image:is([data-image-placement="left"],[data-image-placement="right"]) .question-image { max-height: min(90cqh, 340px); }
+
+@container (max-width: 600px) {
+  .quiz-panel.has-image { top: calc(50% + 20px); height: min(78%, calc(100% - 54px)); }
+  .has-image[data-image-placement="left"] .question-content { grid-template-columns: minmax(0, 1fr); grid-template-areas: "picture" "question" "error"; }
+  .has-image[data-image-placement="right"] .question-content { grid-template-columns: minmax(0, 1fr); grid-template-areas: "question" "picture" "error"; }
+  .has-image:is([data-image-placement="left"],[data-image-placement="right"]) .question-image { max-height: min(42cqh, 240px); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .room-wrap.is-forward { animation-duration: .15s; }
   .room-wrap.is-forward .door-detail { animation-duration: .15s; }
