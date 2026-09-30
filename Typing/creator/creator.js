@@ -14,6 +14,7 @@ import { downloadProject, parseProjectFile, MAX_PROJECT_BYTES } from './project-
 import {createCloudState} from '../../core/cloud/cloud-state.js';
 import {loadBrowserCloud} from '../../core/cloud/browser-client.js';
 import {mountCloudControls} from './cloud-controls.js';
+import {serializeCloudProject} from '../../core/cloud/project-validation.js';
 
 const typingSchema = [
   { key: 'prompt', label: '問題', required: true },
@@ -139,7 +140,7 @@ function syncImageControls() {
   }
   elements.saveButton.disabled=state.busy;
   elements.exportButton.disabled=state.busy||exporting;
-  const bytes=new TextEncoder().encode(JSON.stringify(project)).byteLength;
+  const bytes=new TextEncoder().encode(serializeCloudProject(project)).byteLength;
   document.querySelector('[data-role=image-capacity]').textContent=`教材データ：約 ${Math.ceil(bytes/1024)} KiB ／ オンライン上限 ${project.schemaVersion===2?'2 MiB':'256 KiB'}（文章のみ256 KiBまで）`;
 }
 

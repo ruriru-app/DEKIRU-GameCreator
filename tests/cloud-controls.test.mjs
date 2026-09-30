@@ -5,6 +5,7 @@ import {createProjectStore} from '../Typing/creator/creator-state.js';
 import {createCloudState} from '../core/cloud/cloud-state.js';
 import {projectWith} from './fixtures/cloud-projects.mjs';
 import {ok,failure} from '../core/cloud/contracts.js';
+import {imageProject,pngImage} from './fixtures/question-images.mjs';
 const meta={id:'game-a',version:1,title:'教材',questionCount:1,publication:null,publicationDirty:false};
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
 function setup(overrides={},options={}) {
@@ -125,4 +126,17 @@ test('image processing started during save stops the subsequent publish request'
   const s=setup({saveDraft:()=>gate.promise},{canCommit:()=>allowed});
   const work=s.editor.publish();allowed=false;gate.resolve(ok(meta));
   assert.equal((await work).ok,false);assert.equal(s.calls.length,0);
+});
+
+test('image cloud writes require explicit server capability, while old projects remain saveable',async()=>{
+  const s=setup();s.store.loadProject(imageProject());
+  assert.equal((await s.editor.save()).error.code,'SERVICE_UNAVAILABLE');assert.equal(s.calls.length,0);
+  const enabled=setup({}, {questionImagesEnabled:()=>true});enabled.store.loadProject(imageProject());
+  assert.equal((await enabled.editor.save()).ok,true);
+});
+test('only an image edit during automatic save prevents unconfirmed publication',async()=>{
+  const gate=deferred(),s=setup({saveDraft:()=>gate.promise},{questionImagesEnabled:()=>true});s.store.loadProject(imageProject());
+  const work=s.editor.publish();s.store.setQuestionImage('q1',{...pngImage,placement:'left'});gate.resolve(ok(meta));
+  assert.equal((await work).error.code,'CONFLICT');assert.equal(s.cloudState.isCloudSaved(s.store.getSnapshot()),false);
+  assert.equal(s.calls.length,0);
 });

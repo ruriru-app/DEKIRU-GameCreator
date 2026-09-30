@@ -6,13 +6,14 @@ import {buildShareUrl} from '../../core/cloud/share-url.js';
 import {downloadProject} from './project-file.js';
 
 const same=(a,b)=>serializeCloudProject(a)===serializeCloudProject(b);
-export function createCloudEditor({store,cloudState,api,canCommit=()=>true}) {
+export function createCloudEditor({store,cloudState,api,canCommit=()=>true,questionImagesEnabled=()=>false}) {
   let user=null,epoch=0,busy=false,pending=null,savedRecord=null,conflict=false;
   const listeners=new Set();
   function getState(){return {user:user?{...user}:null,busy,conflict,canRetry:Boolean(pending),...cloudState.getState()};}
   function notify(){for(const fn of listeners) fn(getState());}
   function detach(){epoch++;busy=false;pending=null;savedRecord=null;conflict=false;cloudState.detach();notify();}
   const processing=()=>!canCommit()?failure('VALIDATION','画像を処理中です。完了してから操作してください。'):null;
+  const imageGate=project=>project?.schemaVersion===2&&!questionImagesEnabled()?failure('SERVICE_UNAVAILABLE','画像付き教材のオンライン保存は準備中です。端末保存・HTML配布は利用できます。'):null;
   const gate=()=>processing()||(!user?failure('UNAUTHENTICATED'):busy||pending?failure('VALIDATION','前の操作の確認が必要です。「通信を再確認」を押してください。'):null);
   async function execute(operation) {
     const ticket=epoch;busy=true;notify();
@@ -39,6 +40,7 @@ export function createCloudEditor({store,cloudState,api,canCommit=()=>true}) {
   async function save({copy=false}={}) {
     const error=gate();if(error) return error;
     const snapshot=store.getSnapshot(),checked=validateCloudProject(snapshot,{mode:'draft'});
+    if(imageGate(snapshot))return imageGate(snapshot);
     if(!checked.ok) return checked;
     const meta=copy?null:cloudState.getState().gameMeta,requestId=crypto.randomUUID();
     cloudState.beginSave({ownerId:user.id,requestId,snapshot});
@@ -47,11 +49,12 @@ export function createCloudEditor({store,cloudState,api,canCommit=()=>true}) {
   async function publish() {
     const error=gate();if(error) return error;
     const confirmed=store.getSnapshot(),checked=validateCloudProject(confirmed,{mode:'publish'}),ticket=epoch;
+    if(imageGate(confirmed))return imageGate(confirmed);
     if(!checked.ok) return checked;
     if(!cloudState.isCloudSaved(confirmed)) {
       const saved=await save();if(!saved.ok) return saved;
     }
-    if(processing())return processing();
+    if(processing()||imageGate(confirmed))return processing()||imageGate(confirmed);
     if(ticket!==epoch || !same(confirmed,store.getSnapshot())) return failure('CONFLICT','保存中に編集がありました。新しい内容を確認してから配布してください。');
     const meta=cloudState.getState().gameMeta;
     return execute({method:'publishGame',args:{gameId:meta.id,expectedVersion:meta.version,requestId:crypto.randomUUID()}});
@@ -63,7 +66,7 @@ export function createCloudEditor({store,cloudState,api,canCommit=()=>true}) {
       if(user?.id!==value?.id) detach();
       user=value?{...value}:null;notify();
     },
-    retry(){return processing()?Promise.resolve(processing()):!user?Promise.resolve(failure('UNAUTHENTICATED')):!pending||busy?Promise.resolve(failure('VALIDATION')):execute(pending);},
+    retry(){const blocked=processing()||imageGate(pending?.method==='saveDraft'?pending.args.project:savedRecord?.project);return blocked?Promise.resolve(blocked):!user?Promise.resolve(failure('UNAUTHENTICATED')):!pending||busy?Promise.resolve(failure('VALIDATION')):execute(pending);},
     async load(id,{canReplace=()=>true,onLoaded=()=>{}}={}) {
       const error=gate();if(error) return error;
       const ticket=epoch,snapshot=store.getSnapshot();busy=true;notify();
@@ -100,8 +103,8 @@ export function mountCloudControls({
   copyText=text=>navigator.clipboard.writeText(text),
   canCommit=()=>true,subscribeCommitState=()=>()=>{},
 }) {
-  const editor=createCloudEditor({store,cloudState,api,canCommit});
   let destroyed=false,identityRevision=0,context=null,activeChoice=null,authNavigating=false;
+  const editor=createCloudEditor({store,cloudState,api,canCommit,questionImagesEnabled:()=>context?.capabilities?.questionImages===true});
   const page=root.ownerDocument.defaultView;
   function setAuthNavigation(value){authNavigating=value;onAuthNavigation(value);}
   async function onPageShow(event){
@@ -133,6 +136,10 @@ export function mountCloudControls({
     let url='';if(pub?.status==='published') {try{url=buildShareUrl(appBaseUrl,pub.shareId);}catch{}}
     q('[data-cloud-url]').value=url;q('[data-cloud-link]').hidden=!url;
     if(!canCommit())for(const name of ['login','logout','save','publish','retry','save-copy','reload'])buttons[name].disabled=true;
+    if(store.getSnapshot().schemaVersion===2&&context?.capabilities?.questionImages!==true){
+      for(const name of ['save','publish','save-copy','retry'])buttons[name].disabled=true;
+      q('[data-cloud-save-state]').textContent='画像付き教材のオンライン保存は準備中です。問題セットの保存・HTML配布は利用できます。';
+    }
   }
   async function refreshContext(){
     if(!configured||!editor.getState().user)return;

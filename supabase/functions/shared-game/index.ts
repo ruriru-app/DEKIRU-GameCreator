@@ -19,10 +19,141 @@
     return { ok: false, error: { code, message, ...retryAfterSeconds === void 0 ? {} : { retryAfterSeconds } } };
   }
 
+  // core/image-format.js
+  function invalid() {
+    throw new Error("\u753B\u50CF\u306E\u5F62\u5F0F\u307E\u305F\u306F\u30C7\u30FC\u30BF\u304C\u6B63\u3057\u304F\u3042\u308A\u307E\u305B\u3093\u3002");
+  }
+  var crcTable = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
+    crcTable[n] = c;
+  }
+  function readImageInfo(bytes) {
+    if (!(bytes instanceof Uint8Array) || bytes.length < 12) invalid();
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const text = (i, n) => String.fromCharCode(...bytes.subarray(i, i + n));
+    const finish = (mime, width, height) => {
+      if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) invalid();
+      return { mime, width, height };
+    };
+    if (bytes[0] === 137 && text(1, 7) === "PNG\r\n\n") {
+      let pos = 8, width, height, hasData = false;
+      while (pos + 12 <= bytes.length) {
+        const length = view.getUint32(pos), end = pos + 12 + length, kind = text(pos + 4, 4);
+        if (end > bytes.length) invalid();
+        let crc = 4294967295;
+        for (let i = pos + 4; i < end - 4; i++) crc = crcTable[(crc ^ bytes[i]) & 255] ^ crc >>> 8;
+        if ((crc ^ 4294967295) >>> 0 !== view.getUint32(end - 4)) invalid();
+        if (pos === 8 && (kind !== "IHDR" || length !== 13)) invalid();
+        if (kind === "IHDR") {
+          if (pos !== 8) invalid();
+          width = view.getUint32(pos + 8);
+          height = view.getUint32(pos + 12);
+          const depths = { 0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16] };
+          if (!depths[bytes[pos + 17]]?.includes(bytes[pos + 16]) || bytes[pos + 18] || bytes[pos + 19] || bytes[pos + 20] > 1) invalid();
+        }
+        if (kind === "IDAT" && length > 0) hasData = true;
+        if (kind === "IEND") {
+          if (length !== 0 || end !== bytes.length || !hasData) invalid();
+          return finish("image/png", width, height);
+        }
+        pos = end;
+      }
+      invalid();
+    }
+    if (bytes[0] === 255 && bytes[1] === 216) {
+      let pos = 2, width, height, scan = false, hasScan = false;
+      while (pos < bytes.length) {
+        if (scan) {
+          while (pos < bytes.length && bytes[pos] !== 255) pos++;
+          if (pos >= bytes.length) invalid();
+        }
+        if (bytes[pos++] !== 255) invalid();
+        while (bytes[pos] === 255) pos++;
+        const marker = bytes[pos++];
+        if (scan && (marker === 0 || marker >= 208 && marker <= 215)) continue;
+        scan = false;
+        if (marker === 217) {
+          if (pos !== bytes.length || !hasScan) invalid();
+          return finish("image/jpeg", width, height);
+        }
+        if (marker === 0 || marker === 216 || marker === void 0 || marker === 1 || marker >= 208 && marker <= 215 || pos + 2 > bytes.length) invalid();
+        const length = view.getUint16(pos), end = pos + length;
+        if (length < 2 || end > bytes.length) invalid();
+        if ([192, 193, 194].includes(marker)) {
+          if (width !== void 0 || length < 8 || length !== 8 + 3 * bytes[pos + 7] || bytes[pos + 2] !== 8) invalid();
+          height = view.getUint16(pos + 3);
+          width = view.getUint16(pos + 5);
+        }
+        if (marker === 218) {
+          if (width === void 0 || length < 6 || length !== 6 + 2 * bytes[pos + 2]) invalid();
+          scan = true;
+          hasScan = true;
+        }
+        pos = end;
+      }
+      invalid();
+    }
+    if (text(0, 4) === "RIFF" && text(8, 4) === "WEBP") {
+      if (view.getUint32(4, true) + 8 !== bytes.length) invalid();
+      let pos = 12, width, height, hasPixels = false;
+      while (pos + 8 <= bytes.length) {
+        const kind = text(pos, 4), length = view.getUint32(pos + 4, true), data = pos + 8, end = data + length;
+        if (end > bytes.length) invalid();
+        if (kind === "VP8X") {
+          if (pos !== 12 || length !== 10) invalid();
+          width = 1 + bytes[data + 4] + 256 * bytes[data + 5] + 65536 * bytes[data + 6];
+          height = 1 + bytes[data + 7] + 256 * bytes[data + 8] + 65536 * bytes[data + 9];
+        } else if (kind === "VP8 ") {
+          if (length < 10 || bytes[data] & 1 || bytes[data + 3] !== 157 || bytes[data + 4] !== 1 || bytes[data + 5] !== 42) invalid();
+          const w = view.getUint16(data + 6, true) & 16383, h = view.getUint16(data + 8, true) & 16383;
+          if (width !== void 0 && (width !== w || height !== h)) invalid();
+          width = w;
+          height = h;
+          hasPixels = true;
+        } else if (kind === "VP8L") {
+          if (length < 5 || bytes[data] !== 47 || bytes[data + 4] >>> 5 !== 0) invalid();
+          const bits = view.getUint32(data + 1, true), w = (bits & 16383) + 1, h = (bits >>> 14 & 16383) + 1;
+          if (width !== void 0 && (width !== w || height !== h)) invalid();
+          width = w;
+          height = h;
+          hasPixels = true;
+        } else if (kind === "ANMF" && length >= 16 && width !== void 0) hasPixels = true;
+        pos = end + (length & 1);
+      }
+      if (pos !== bytes.length || !hasPixels) invalid();
+      return finish("image/webp", width, height);
+    }
+    invalid();
+  }
+
+  // core/question-image.js
+  var QUESTION_IMAGE_LIMITS = Object.freeze({ bytes: 131072, side: 1280, alt: 200, sourceBytes: 10485760, sourceSide: 8192, sourcePixels: 25e6 });
+  var IMAGE_PLACEMENTS = Object.freeze(["top", "bottom", "left", "right"]);
+  function normalizeQuestionImage(value) {
+    const bad = () => {
+      throw new Error("\u554F\u984C\u306E\u753B\u50CF\u304C\u6B63\u3057\u304F\u3042\u308A\u307E\u305B\u3093\u3002JPEG/PNG\u30FB\u9577\u8FBA1280px\u30FB128 KiB\u4EE5\u4E0B\u306E\u753B\u50CF\u306B\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
+    };
+    if (!value || typeof value !== "object" || Array.isArray(value)) bad();
+    const keys = ["dataUrl", "width", "height", "placement", "alt"];
+    if (Object.keys(value).length !== 5 || keys.some((k) => !Object.hasOwn(value, k))) bad();
+    const { dataUrl, width, height, placement, alt } = value;
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || Math.max(width, height) > 1280 || !IMAGE_PLACEMENTS.includes(placement) || typeof alt !== "string" || alt.length > 200 || alt.includes("\0") || !alt.isWellFormed() || typeof dataUrl !== "string" || dataUrl.length > 175e3) bad();
+    const match = /^data:(image\/(?:jpeg|png));base64,((?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)$/.exec(dataUrl);
+    if (!match || !match[2]) bad();
+    const binary = atob(match[2]);
+    if (binary.length > 131072 || btoa(binary) !== match[2]) bad();
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0)), info = readImageInfo(bytes);
+    if (info.mime !== match[1] || info.width !== width || info.height !== height) bad();
+    return { dataUrl, width, height, placement, alt };
+  }
+
   // core/cloud/project-validation.js
   var CLOUD_LIMITS = Object.freeze({
     questions: 200,
     bytes: 262144,
+    imageProjectBytes: 2097152,
     title: 80,
     prompt: 1e3,
     displayAnswer: 200,
@@ -33,23 +164,38 @@
   var record = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
   var keysMatch = (v, keys) => record(v) && Object.keys(v).length === keys.length && keys.every((k) => Object.hasOwn(v, k));
   var validText = (v) => typeof v === "string" && !v.includes("\0") && v.isWellFormed();
-  function serializeCloudProject(p) {
+  function serializeCloudProject(p, { withoutImages = false } = {}) {
     return JSON.stringify({
       schemaVersion: p.schemaVersion,
       title: p.title,
       gameType: p.gameType,
       templateId: p.templateId,
       settings: { volume: p.settings.volume, muted: p.settings.muted },
-      questions: p.questions.map((q) => ({ id: q.id, prompt: q.prompt, displayAnswer: q.displayAnswer, reading: q.reading, romajiHint: q.romajiHint }))
+      questions: p.questions.map((q) => ({
+        id: q.id,
+        prompt: q.prompt,
+        displayAnswer: q.displayAnswer,
+        reading: q.reading,
+        romajiHint: q.romajiHint,
+        ...!withoutImages && Object.hasOwn(q, "image") ? { image: { dataUrl: q.image?.dataUrl, width: q.image?.width, height: q.image?.height, placement: q.image?.placement, alt: q.image?.alt } } : {}
+      }))
     });
   }
   function validateCloudProject(p, { mode = "draft" } = {}) {
-    if (!["draft", "publish"].includes(mode) || !keysMatch(p, ["schemaVersion", "title", "gameType", "templateId", "settings", "questions"]) || p.schemaVersion !== 1 || p.gameType !== "typing" || p.templateId !== "fusuma" || !validText(p.title) || !Array.isArray(p.questions) || !keysMatch(p.settings, ["volume", "muted"]) || !Number.isFinite(p.settings.volume) || p.settings.volume < 0 || p.settings.volume > 1 || typeof p.settings.muted !== "boolean") return failure("VALIDATION");
+    if (!["draft", "publish"].includes(mode) || !keysMatch(p, ["schemaVersion", "title", "gameType", "templateId", "settings", "questions"]) || ![1, 2].includes(p.schemaVersion) || p.gameType !== "typing" || p.templateId !== "fusuma" || !validText(p.title) || !Array.isArray(p.questions) || !keysMatch(p.settings, ["volume", "muted"]) || !Number.isFinite(p.settings.volume) || p.settings.volume < 0 || p.settings.volume > 1 || typeof p.settings.muted !== "boolean") return failure("VALIDATION");
     if ([...p.title].length > CLOUD_LIMITS.title || p.questions.length > CLOUD_LIMITS.questions) return failure("LIMIT");
     if (mode === "publish" && (!p.title.trim() || p.questions.length === 0)) return failure("VALIDATION", "\u516C\u958B\u306B\u306F\u30BB\u30C3\u30C8\u540D\u30681\u554F\u4EE5\u4E0A\u306E\u554F\u984C\u304C\u5FC5\u8981\u3067\u3059\u3002");
     const ids = /* @__PURE__ */ new Set();
     for (const [index, q] of p.questions.entries()) {
-      if (!keysMatch(q, ["id", "prompt", "displayAnswer", "reading", "romajiHint"]) || Object.values(q).some((v) => !validText(v)) || !/^[A-Za-z0-9_-]{1,128}$/.test(q.id) || ids.has(q.id)) return failure("VALIDATION", index + 1 + "\u554F\u76EE\u306E\u5F62\u5F0F\u307E\u305F\u306FID\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
+      const image = record(q) && Object.hasOwn(q, "image");
+      if (!keysMatch(q, ["id", "prompt", "displayAnswer", "reading", "romajiHint", ...image && p.schemaVersion === 2 ? ["image"] : []]) || ["id", "prompt", "displayAnswer", "reading", "romajiHint"].some((k) => !validText(q[k])) || !/^[A-Za-z0-9_-]{1,128}$/.test(q.id) || ids.has(q.id)) return failure("VALIDATION", index + 1 + "\u554F\u76EE\u306E\u5F62\u5F0F\u307E\u305F\u306FID\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
+      if (image) {
+        try {
+          normalizeQuestionImage(q.image);
+        } catch {
+          return failure("VALIDATION", index + 1 + "\u554F\u76EE\u306E\u753B\u50CF\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
+        }
+      }
       ids.add(q.id);
       for (const key of ["prompt", "displayAnswer", "reading", "romajiHint"]) {
         if ([...q[key]].length > CLOUD_LIMITS[key]) return failure("LIMIT", index + 1 + "\u554F\u76EE\u306E\u6587\u5B57\u6570\u304C\u4E0A\u9650\u3092\u8D85\u3048\u3066\u3044\u307E\u3059\u3002");
@@ -57,7 +203,8 @@
       }
     }
     const serialized = serializeCloudProject(p);
-    if (new TextEncoder().encode(serialized).byteLength > CLOUD_LIMITS.bytes) return failure("LIMIT", "\u30AA\u30F3\u30E9\u30A4\u30F3\u4FDD\u5B58\u306F1\u4EF6256 KiB\u4EE5\u4E0B\u3067\u3059\u3002\u7AEF\u672B\u3078\u306E\u4FDD\u5B58\u306F\u5F15\u304D\u7D9A\u304D\u5229\u7528\u3067\u304D\u307E\u3059\u3002");
+    const bytes = (text) => new TextEncoder().encode(text).byteLength;
+    if (bytes(serializeCloudProject(p, { withoutImages: true })) > CLOUD_LIMITS.bytes || bytes(serialized) > (p.schemaVersion === 2 ? CLOUD_LIMITS.imageProjectBytes : CLOUD_LIMITS.bytes)) return failure("LIMIT", "\u30AA\u30F3\u30E9\u30A4\u30F3\u4FDD\u5B58\u306F\u6587\u7AE0256 KiB\u3001\u753B\u50CF\u3092\u542B\u3080\u5168\u4F532 MiB\u4EE5\u4E0B\u3067\u3059\u3002\u753B\u50CF\u3092\u6E1B\u3089\u3059\u304B\u3001\u7AEF\u672B\u3078\u306E\u4FDD\u5B58\u3092\u3054\u5229\u7528\u304F\u3060\u3055\u3044\u3002");
     return ok(JSON.parse(serialized));
   }
 
@@ -76,12 +223,13 @@
 
   // core/cloud/public-api.js
   function checkedPublicGame(value) {
-    if (value?.schemaVersion !== 1 || value.runtimeVersion !== "fusuma-1" || !Number.isSafeInteger(value.publicationVersion) || value.publicationVersion < 1) return failure("SERVICE_UNAVAILABLE");
+    const runtime = value?.project?.schemaVersion === 1 ? "fusuma-1" : value?.project?.schemaVersion === 2 ? "fusuma-2" : null;
+    if (value?.schemaVersion !== 1 || !runtime || value.runtimeVersion !== runtime || !Number.isSafeInteger(value.publicationVersion) || value.publicationVersion < 1) return failure("SERVICE_UNAVAILABLE");
     const validated = validateCloudProject(value.project, { mode: "publish" });
     return validated.ok ? ok({
       schemaVersion: 1,
       project: validated.data,
-      runtimeVersion: "fusuma-1",
+      runtimeVersion: runtime,
       publicationVersion: value.publicationVersion
     }) : failure("SERVICE_UNAVAILABLE");
   }

@@ -4,6 +4,7 @@ import {createHmac} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {runInNewContext} from 'node:vm';
 import {projectWith} from './fixtures/cloud-projects.mjs';
+import {imageProject} from './fixtures/question-images.mjs';
 import {canonicalAddress, createDailyAddressHasher, readVerifiedAddress} from '../supabase/functions/shared-game/client-address.js';
 import {createSharedGameServer, readServerEnvironment} from '../supabase/functions/shared-game/server.js';
 
@@ -143,7 +144,7 @@ test('committed self-contained deployment bundle starts closed without secrets a
   let serve,fetchCount=0;
   const sandbox={Deno:{env:{get:()=>undefined},serve:handler=>{serve=handler;}},
     fetch:async()=>{fetchCount++;throw new Error('Must not fetch');},
-    Request,Response,Headers,URL,TextEncoder,AbortController,crypto,atob,setTimeout,clearTimeout};
+    Request,Response,Headers,URL,TextEncoder,AbortController,crypto,atob,btoa,setTimeout,clearTimeout};
   runInNewContext(source,sandbox,{timeout:1000});
   assert.equal(typeof serve,'function');
   const response=await serve(request());
@@ -159,4 +160,9 @@ test('committed self-contained deployment bundle starts closed without secrets a
   const expected=await handler(request());
   assert.equal(actual.status,expected.status);
   assert.deepEqual(await actual.json(),await expected.json());
+  const pictured={schemaVersion:1,project:imageProject(),runtimeVersion:'fusuma-2',publicationVersion:2};
+  sandbox.fetch=async url=>Response.json(url.endsWith('consume_shared_read')?{allowed:true}:pictured);
+  runInNewContext(source,{...sandbox},{timeout:1000});
+  const imageResponse=await serve(request());assert.equal(imageResponse.status,200);
+  assert.deepEqual(await imageResponse.json(),pictured,'generated endpoint retains v2 image');
 });

@@ -3,11 +3,12 @@ import { validateCloudProject } from './project-validation.js';
 import { SHARE_ID_PATTERN } from './share-url.js';
 
 export function checkedPublicGame(value) {
-  if (value?.schemaVersion !== 1 || value.runtimeVersion !== 'fusuma-1' ||
+  const runtime=value?.project?.schemaVersion===1?'fusuma-1':value?.project?.schemaVersion===2?'fusuma-2':null;
+  if (value?.schemaVersion !== 1 || !runtime || value.runtimeVersion !== runtime ||
       !Number.isSafeInteger(value.publicationVersion) || value.publicationVersion < 1) return failure('SERVICE_UNAVAILABLE');
   const validated=validateCloudProject(value.project,{mode:'publish'});
   return validated.ok ? ok({
-    schemaVersion:1,project:validated.data,runtimeVersion:'fusuma-1',publicationVersion:value.publicationVersion,
+    schemaVersion:1,project:validated.data,runtimeVersion:runtime,publicationVersion:value.publicationVersion,
   }) : failure('SERVICE_UNAVAILABLE');
 }
 export async function fetchSharedGame({endpoint,shareId,fetchImpl=fetch,signal}) {

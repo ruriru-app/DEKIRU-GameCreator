@@ -1,10 +1,11 @@
-/** @typedef {{schemaVersion:1,title:string,gameType:'typing',templateId:'fusuma',settings:{volume:number,muted:boolean},questions:Array<{id:string,prompt:string,displayAnswer:string,reading:string,romajiHint:string}>}} Project */
-/** @typedef {{shareId:string,status:'published'|'stopped',version:number,sourceVersion:number,runtimeVersion:'fusuma-1'}} Publication */
+/** @typedef {{dataUrl:string,width:number,height:number,placement:'top'|'bottom'|'left'|'right',alt:string}} QuestionImage */
+/** @typedef {{schemaVersion:1|2,title:string,gameType:'typing',templateId:'fusuma',settings:{volume:number,muted:boolean},questions:Array<{id:string,prompt:string,displayAnswer:string,reading:string,romajiHint:string,image?:QuestionImage}>}} Project */
+/** @typedef {{shareId:string,status:'published'|'stopped',version:number,sourceVersion:number,runtimeVersion:'fusuma-1'|'fusuma-2'}} Publication */
 /** @typedef {{id:string,version:number,title:string,questionCount:number,updatedAt:string,publication:Publication|null,publicationDirty:boolean}} GameMeta */
 /** @typedef {GameMeta & {project:Project}} GameRecord */
 /** @typedef {{ownerId:string,status:'active'|'disabled',plan:'free',limits:object,counts:object,capabilities:object}} Context */
 /** @template T @typedef {{ok:true,data:T}|{ok:false,error:{code:string,message:string,retryAfterSeconds?:number}}} Result */
-/** @typedef {{schemaVersion:1,project:Project,runtimeVersion:'fusuma-1',publicationVersion:number}} PublicGame */
+/** @typedef {{schemaVersion:1,project:Project,runtimeVersion:'fusuma-1'|'fusuma-2',publicationVersion:number}} PublicGame */
 
 export const ERROR_MESSAGES = Object.freeze({
   NOT_CONFIGURED: 'オンライン機能は準備中です。端末への保存は利用できます。',

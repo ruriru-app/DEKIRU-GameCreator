@@ -30,6 +30,17 @@ export async function createLocalTestClients() {
     return {...rpcClient(signed.data.access_token),id};
   }
   const admin={
+    setImageWrites(enabled){
+      if(typeof enabled!=='boolean')throw Error('Boolean flag required');
+      execFileSync('docker',['exec','supabase_db_dekiru-gamecreator-test','psql','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',
+        'update private.service_control set question_images_enabled='+enabled+' where id;'],{stdio:['ignore','pipe','pipe']});
+    },
+    validateProject(projectText){
+      const encoded=Buffer.from(projectText).toString('base64');
+      const sql="select jsonb_build_object('validation',private.validate_project(convert_from(decode('"+encoded+"','base64'),'UTF8'),'draft'),'canonical',private.project_text(convert_from(decode('"+encoded+"','base64'),'UTF8')::jsonb));";
+      return JSON.parse(execFileSync('docker',['exec','-i','supabase_db_dekiru-gamecreator-test','psql','-U','postgres','-d','postgres','-tA','-v','ON_ERROR_STOP=1'],{input:sql,encoding:'utf8',maxBuffer:12*1024*1024,stdio:['pipe','pipe','pipe']}));
+    },
+    readShared:shareId=>rpcClient(config.SERVICE_ROLE_KEY).rpc('read_shared_game',{p_share_id:shareId}),
     resetRates(ownerId) {
       if (!made.includes(ownerId) || !/^[0-9a-f-]{36}$/.test(ownerId)) throw Error('Only this fixture owner may be changed.');
       execFileSync('docker',['exec','supabase_db_dekiru-gamecreator-test','psql','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',

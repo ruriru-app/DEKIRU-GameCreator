@@ -1,6 +1,6 @@
 /** Never import a path supplied by a saved project or an HTTP response. */
 export async function resolveRuntime(version) {
-  if(version!=='fusuma-1')throw new Error('Unsupported game runtime');
+  if(!['fusuma-1','fusuma-2'].includes(version))throw new Error('Unsupported game runtime');
   const [template,audio,converter,engine,controller,renderer]=await Promise.all([
     import('../Typing/templates/fusuma/manifest.js'),import('../core/audio-manager.js'),
     import('../Typing/core/romaji-converter.js'),import('../Typing/core/typing-engine.js'),
