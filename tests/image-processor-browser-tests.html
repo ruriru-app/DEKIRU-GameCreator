@@ -1,0 +1,66 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><title>Image processor tests</title>
+<style>body{font:16px system-ui;padding:24px}li{margin:8px}.fail{color:#a00}</style>
+<h1>画像処理の確認</h1><ol id="results"></ol>
+<script type="module">
+import {jpegBase64,pngBase64,webpBase64,bytesFrom} from './fixtures/question-images.mjs';
+import {readImageInfo} from '../core/image-format.js';
+let fail=0,pass=0;
+const assert=(yes,message)=>{if(!yes)throw Error(message);};
+async function check(name,fn){const li=document.createElement('li');try{await fn();li.textContent='PASS '+name;pass++;}catch(e){li.textContent='FAIL '+name+': '+e.message;li.className='fail';fail++;}document.querySelector('#results').append(li);}
+const module=await import('../Typing/creator/image-processor.js').catch(()=>({}));
+const process=(...args)=>{assert(typeof module.processQuestionImage==='function','画像処理が未実装');return module.processQuestionImage(...args);};
+const file=(base64,type)=>new File([bytesFrom(base64)],'private-name-with-answer.'+type.split('/')[1],{type});
+const checkImage=async image=>{
+  const bytes=bytesFrom(image.dataUrl.split(',')[1]),info=readImageInfo(bytes);
+  assert(bytes.length<=131072&&Math.max(info.width,info.height)<=1280,'出力上限');
+  assert(!image.dataUrl.includes('private-name')&&image.alt==='問題の画像','ファイル名を保存しない');
+  assert(!new TextDecoder('latin1').decode(bytes).includes('Exif'),'EXIF除去');
+  const bitmap=await createImageBitmap(new Blob([bytes]));assert(bitmap.width===image.width&&bitmap.height===image.height,'デコードできる');bitmap.close();
+};
+for(const [name,b64,type] of [['JPEG',jpegBase64,'image/jpeg'],['PNG透過',pngBase64,'image/png'],['WebP',webpBase64,'image/webp']]) {
+ await check(name+'：実デコード・小画像を拡大しない',async()=>{
+   const source=file(b64,type),before=await source.arrayBuffer(),image=await process(source);
+   await checkImage(image);assert(image.width===1&&image.height===1,'原寸1×1を維持');
+   if(name==='PNG透過')assert(image.dataUrl.startsWith('data:image/png;'),'透過PNG維持');
+   assert(new Uint8Array(before).every((b,i)=>b===bytesFrom(b64)[i]),'元画像不変');
+ });
+}
+await check('形式・破損・10MiB超は拒否',async()=>{
+  for(const f of [new File(['<svg/>'],'a.svg',{type:'image/svg+xml'}),new File([bytesFrom(jpegBase64).slice(0,-1)],'a.jpg'),new File([new Uint8Array(10485761)],'huge.jpg')]) {
+    let refused=false;try{await process(f);}catch{refused=true;}assert(refused,'不正画像を拒否');
+  }
+});
+await check('巨大寸法はデコード前に拒否',async()=>{
+  for(const [width,height] of [[8193,1],[5001,5000]]) {
+    const bytes=bytesFrom(jpegBase64);
+    const i=bytes.findIndex((b,i)=>b===255&&bytes[i+1]===192);
+    bytes[i+5]=height>>8;bytes[i+6]=height&255;bytes[i+7]=width>>8;bytes[i+8]=width&255;
+    let message='';try{await process(new File([bytes],'large.jpg'));}catch(e){message=e.message;}
+    assert(/寸法|画素/.test(message),'ヘッダーで巨大画像と判定');
+  }
+});
+await check('写真を1280px以下に縮小しEXIFの回転を適用',async()=>{
+  const canvas=document.createElement('canvas');canvas.width=1600;canvas.height=800;
+  const ctx=canvas.getContext('2d');ctx.fillStyle='#b59ad9';ctx.fillRect(0,0,1600,800);
+  const jpeg=bytesFrom(canvas.toDataURL('image/jpeg').split(',')[1]);
+  // APP1: Exif/TIFF little endian, orientation=6, camera note deliberately absent.
+  const exif=new Uint8Array([255,225,0,34,69,120,105,102,0,0,73,73,42,0,8,0,0,0,1,0,18,1,3,0,1,0,0,0,6,0,0,0,0,0,0,0]);
+  const withExif=new Uint8Array(jpeg.length+exif.length);withExif.set(jpeg.slice(0,2));withExif.set(exif,2);withExif.set(jpeg.slice(2),2+exif.length);
+  const image=await process(new File([withExif],'camera.jpg',{type:'image/jpeg'}));await checkImage(image);
+  assert(image.width===640&&image.height===1280,'EXIF向きを補正');
+});
+await check('透過ノイズは下限でも容量超過なら拒否し、低画質化を続けない',async()=>{
+  const canvas=document.createElement('canvas');canvas.width=640;canvas.height=640;
+  const ctx=canvas.getContext('2d'),pixels=ctx.createImageData(640,640);let seed=19;
+  for(let i=0;i<pixels.data.length;i++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;pixels.data[i]=seed>>>24;}
+  ctx.putImageData(pixels,0,0);const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));
+  let message='';try{await process(new File([blob],'noise.png',{type:'image/png'}));}catch(e){message=e.message;}
+  assert(/128 KiB/.test(message),'容量超過案内');
+});
+await check('処理前の中止に対応',async()=>{
+ const abort=new AbortController();abort.abort();let stopped=false;
+ try{await process(file(jpegBase64,'image/jpeg'),{signal:abort.signal});}catch(e){stopped=e.name==='AbortError';}
+ assert(stopped,'AbortError');
+});
+document.body.dataset.status=fail?'fail':'pass';document.title=(fail?'FAIL':'PASS')+' Image processor '+pass+'/'+(pass+fail);
+</script></html>
