@@ -1,3 +1,5 @@
+import {normalizeQuestionImage} from '../../core/question-image.js';
+
 function clone(value) {
   return structuredClone(value);
 }
@@ -78,6 +80,20 @@ export function createProjectStore(initialProject, { idFactory = () => crypto.ra
       project.questions[index] = { ...project.questions[index], ...clone(patch), id };
       edited();
       return true;
+    },
+    setQuestionImage(id, image) {
+      const index = questionIndex(id);
+      if (index < 0) return;
+      if (image === null) {
+        if (!Object.hasOwn(project.questions[index], 'image')) return;
+        delete project.questions[index].image;
+      } else {
+        const checked = normalizeQuestionImage(image);
+        if (JSON.stringify(project.questions[index].image) === JSON.stringify(checked)) return;
+        project.questions[index].image = checked;
+        project.schemaVersion = 2;
+      }
+      edited();
     },
     duplicateQuestion(id) {
       const index = questionIndex(id);
