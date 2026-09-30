@@ -165,7 +165,7 @@ begin
   end loop;
   text_only:=jsonb_set(p,'{questions}',coalesce((select jsonb_agg(qvalue-'image' order by n) from jsonb_array_elements(p->'questions') with ordinality e(qvalue,n)),'[]'::jsonb));
   if octet_length(private.project_text(text_only))>262144 or
-    octet_length(private.project_text(p))>case when p->'schemaVersion'='2'::jsonb then 2097152 else 262144 end then return private.fail('LIMIT'); end if;
+    octet_length(private.project_text(p))>(case when p->'schemaVersion'='2'::jsonb then 2097152 else 262144 end) then return private.fail('LIMIT'); end if;
   return private.success(p);
 exception when others then return private.fail('VALIDATION');
 end;
