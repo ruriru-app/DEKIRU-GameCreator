@@ -5,6 +5,8 @@
 <iframe title="書き出しゲーム" src="../dist/typing-fusuma-sample.html" width="1280" height="720"></iframe>
 <script type="module">
 const iframe = document.querySelector('iframe');
+const withImages = new URLSearchParams(location.search).has('images');
+if(withImages) iframe.src='../dist/typing-fusuma-images-test.html';
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 let failures = 0;
 function report(name, passed, detail='') {
@@ -29,6 +31,24 @@ try {
       css.borderRadius==='0px' && css.boxShadow==='none'
       && doc.documentElement.scrollWidth<=width && doc.documentElement.scrollHeight<=height);
     report(`${width}×${height}: backgrounds crop without stretching`,win.getComputedStyle(shadow.querySelector('.room-image')).objectFit==='cover');
+  }
+  if(withImages) {
+    iframe.width=1280;iframe.height=720;
+    const q=role=>shadow.querySelector('[data-role="'+role+'"]');
+    const until=async predicate=>{for(let i=0;i<300;i++){if(predicate())return;await wait(25);}throw Error('game transition timeout');};
+    report('network-disabled export embeds the image project',doc.querySelector('meta[http-equiv="Content-Security-Policy"]').content.includes("connect-src 'none'")&&JSON.parse(doc.querySelector('#project-data').textContent).schemaVersion===2);
+    q('start').click();
+    report('export walks before the first image question',q('quiz').hidden&&q('stage').classList.contains('is-moving'));
+    await until(()=>!q('quiz').hidden&&shadow.querySelector('.question-image')?.naturalWidth>0);
+    report('export uses the embedded image in the selected position',shadow.querySelector('.question-image').src.startsWith('data:image/')&&q('quiz').dataset.imagePlacement==='left');
+    const enter=value=>{q('input').value=value;q('input').dispatchEvent(new win.Event('input',{bubbles:true}));q('quiz').dispatchEvent(new win.Event('submit',{bubbles:true,cancelable:true}));};
+    enter('a');await until(()=>q('stage').classList.contains('is-open'));await until(()=>q('stage').classList.contains('is-moving'));await until(()=>!q('quiz').hidden);
+    report('export removes the image at the next question',q('question').textContent==='いを入力'&&!shadow.querySelector('.question-image')&&!q('quiz').classList.contains('is-shaking'));
+    enter('i');await until(()=>!q('result-card').hidden);
+    report('export reaches the clear scene with no network resources',!q('result-background').hidden&&win.performance.getEntriesByType('resource').every(item=>!/^https?:/.test(item.name)));
+    q('replay').click();await until(()=>!q('quiz').hidden);
+    report('export replay restores the first image question',q('question').textContent==='あを入力'&&!!shadow.querySelector('.question-image'));
+    win.__DEKIRU_GAME__.destroy();
   }
 } catch(error) { report('standalone loads',false,error.message); }
 document.body.dataset.status=failures?'failed':'passed';

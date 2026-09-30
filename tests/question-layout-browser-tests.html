@@ -68,11 +68,19 @@ try{
    assert(!stillHost.shadowRoot.querySelector('.question-image'),'旧画像除去');
    assert(document.activeElement===editor,'編集フォーカス維持');editor.remove();
  });
- await check('不正URLと破損画像はエラー案内へ',async()=>{
+ await check('不正URLは通信せずエラー案内へ',async()=>{
    const p=imageProject({...pngImage,dataUrl:'https://example.invalid/tracker'});
    preview.update({project:p,questionId:'q1'});await frame();
    assert(!stillHost.shadowRoot.querySelector('img[src^="https://example.invalid"]'),'外部へ送信しない');
    assert(!role(stillHost,'image-error').hidden,'エラー案内');
+ });
+ await check('デコードできない画像は問題と入力を残して案内する',async()=>{
+   const p=imageProject({...pngImage,dataUrl:'data:image/png;base64,aW52YWxpZA=='});
+   preview.update({project:p,questionId:'q1'});
+   for(let i=0;i<100&&role(stillHost,'image-error').hidden;i++)await frame();
+   assert(!role(stillHost,'image-error').hidden,'デコード失敗の案内');
+   assert(!role(stillHost,'quiz').hidden&&!role(stillHost,'input').disabled,'問題は残す');
+   assert(role(stillHost,'question-picture').hidden,'壊れた画像を見せない');
  });
  await check('静止入力から送信しない・0問は案内',async()=>{
    const p=imageProject();p.questions=[];preview.update({project:p,questionId:null});

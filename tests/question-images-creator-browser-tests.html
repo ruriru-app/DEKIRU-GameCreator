@@ -56,6 +56,18 @@ try{
    assert(app.preview.getState().selectedId!==selected,'隣へ');
    app.preview.reset();assert(app.preview.getState().selectedId===null,'選択解除');
  });
+ await check('390pxは縦並び、選択ボタンだけプレビューへ移動する',async()=>{
+   iframe.style.width='390px';await frame();await frame();
+   card().querySelector('[data-action=preview-question]').click();
+   await new Promise(r=>setTimeout(r,800));
+   const previewRect=doc.querySelector('[data-role=game-host]').getBoundingClientRect();
+   assert(game().querySelector('.game-frame').offsetWidth<600,'端末幅へ追従');
+   assert(previewRect.top>=0&&previewRect.top<800,'選択で表示領域へ');
+   const before=win.scrollY,input=card().querySelector('[data-field=prompt]');
+   input.value='更新した問題';input.dispatchEvent(new win.Event('input',{bubbles:true}));await frame();
+   assert(Math.abs(win.scrollY-before)<1,'入力では勝手にスクロールしない');
+   assert(doc.documentElement.scrollWidth<=390,'横スクロールなし');
+ });
 }catch(e){await check(e.message,()=>{throw e;});}
 document.body.dataset.status=fail?'fail':'pass';document.title=(fail?'FAIL':'PASS')+' Image creator '+pass+'/'+(pass+fail);
 </script></html>

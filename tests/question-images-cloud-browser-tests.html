@@ -21,6 +21,9 @@ function setup({user={id:'owner'},storage=memoryStorage(),signOut=async()=>ok(nu
 const button=a=>root.querySelector('[data-cloud-action="'+a+'"]');
 try{
  const a=setup();await a.ui.ready;
+ // Authentication completes before the separately fetched image-write capability.
+ for(let i=0;i<100&&button('publish').disabled;i++)await wait();
+ check('画像対応の確認後にだけ公開ボタンを有効化',!button('publish').disabled);
  button('publish').click();await wait();a.busy(true);
  root.querySelector('[data-choice=confirm]').click();await wait();
  check('確認画面の途中で画像処理が始まれば配布しない',a.calls.length===0&&root.textContent.includes('画像の処理'));
