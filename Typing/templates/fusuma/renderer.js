@@ -16,6 +16,7 @@ function shellMarkup(manifest) {
   return `
     <link rel="stylesheet" href="${stylesheet}">
     <div class="game-frame" style="width:100%;height:var(--game-height,auto);aspect-ratio:${manifest.aspectRatio};position:relative;overflow:hidden;--travel-duration:${manifest.timings.travelMs}ms;--door-duration:${manifest.timings.doorOpenMs}ms;--result-transition-duration:${manifest.timings.resultTransitionMs}ms">
+      <h1 class="game-title" data-role="game-title"></h1>
       <div class="stage" data-role="stage">
         <img class="result-background" data-role="result-background" alt="" hidden>
         <div class="room-wrap" data-role="room-wrap">
@@ -63,6 +64,7 @@ export function mountFusumaGame({
   registerTemplateAudio(audioManager, manifest);
 
   const stage = shadow.querySelector('[data-role="stage"]');
+  const gameTitle = shadow.querySelector('[data-role="game-title"]');
   const roomWrap = shadow.querySelector('[data-role="room-wrap"]');
   const quiz = shadow.querySelector('[data-role="quiz"]');
   const question = shadow.querySelector('[data-role="question"]');
@@ -229,6 +231,8 @@ export function mountFusumaGame({
   function createRuntime(nextProject) {
     eventController?.cancel();
     currentProject = structuredClone(nextProject);
+    gameTitle.textContent = String(currentProject.title ?? '').trim() || 'タイピングゲーム';
+    gameTitle.title = gameTitle.textContent;
     let nextController = null;
     engine = createEngine({
       questions: currentProject.questions,

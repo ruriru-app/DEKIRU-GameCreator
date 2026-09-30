@@ -97,6 +97,28 @@ button, input { font: inherit; }
 .stage.is-open .leaf-left { transform: translateX(-101%); }
 .stage.is-open .leaf-right { transform: translateX(101%); }
 
+.game-title {
+  position: absolute;
+  z-index: 40;
+  top: 3%;
+  left: clamp(8px, 2cqw, 24px);
+  max-width: min(calc(50% - 80px), 32rem);
+  margin: 0;
+  padding: .45em .8em;
+  border-radius: 8px;
+  color: #fff;
+  background: rgb(80 57 40 / 78%);
+  font-size: clamp(11px, 1.6cqw, 20px);
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 .status {
   position: absolute;
   z-index: 12;
@@ -295,6 +317,10 @@ button, input { font: inherit; }
   .result-card.is-compact { width: 80%; top: 89%; padding: 5px 8px; }
   .result-card.is-compact [data-role="result-text"] { gap: 8px; font-size: clamp(9px, 2.5cqw, 12px); }
   .result-card.is-compact button { margin-left: 8px; padding: 4px 8px; font-size: clamp(9px, 2.5cqw, 12px); }
+}
+
+@container (max-width: 600px) {
+  .game-title { padding: .3em .65em; -webkit-line-clamp: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fusuma title tests</title>
+<style>body{font-family:system-ui;color:#514842}#host{width:960px;max-width:100%}li{margin:4px}</style>
+<body data-status="running"><ol id="results"></ol><div id="host"></div>
+<script type="module">
+import { mountFusumaGame } from '../Typing/templates/fusuma/renderer.js';
+import { createTypingEngine } from '../Typing/core/typing-engine.js';
+import { romajiToHiragana } from '../Typing/core/romaji-converter.js';
+import { createFusumaEventController } from '../Typing/templates/fusuma/event-controller.js';
+import { fusumaManifest } from '../Typing/templates/fusuma/manifest.js';
+let failures=0,now=0,sequence=0;
+const timers=new Map(),host=document.querySelector('#host');
+const scheduler={setTimeout(callback,delay){const id=++sequence;timers.set(id,{callback,time:now+delay});return id;},clearTimeout(id){timers.delete(id);}};
+function advance(ms){const end=now+ms;for(;;){const next=[...timers].filter(([,t])=>t.time<=end).sort((a,b)=>a[1].time-b[1].time)[0];if(!next)break;now=next[1].time;timers.delete(next[0]);next[1].callback();}now=end;}
+function check(name,pass){const li=document.createElement('li');li.textContent=(pass?'PASS':'FAIL')+' — '+name;document.querySelector('#results').append(li);if(!pass)failures++;}
+const frame=()=>new Promise(requestAnimationFrame);
+const project={title:'歴史・縄文時代と弥生時代',questions:[{id:'a',prompt:'あを入力',displayAnswer:'亜',reading:'あ',romajiHint:'a'},{id:'i',prompt:'いを入力',displayAnswer:'伊',reading:'い',romajiHint:'i'}]};
+try{
+ const game=mountFusumaGame({host,project,manifest:fusumaManifest,scheduler,createEngine:createTypingEngine,convertRomaji:romajiToHiragana,createEventController:createFusumaEventController,
+ // Replace only the audio device and clock; renderer, engine and styles are real.
+ audioManager:{register(){},stopAll(){},stopChannel(){},playLoop(){},playEffect(){}}});
+ const root=host.shadowRoot,q=role=>root.querySelector('[data-role="'+role+'"]');
+ const sheet=root.querySelector('link');if(!sheet.sheet)await new Promise(r=>sheet.addEventListener('load',r,{once:true}));
+ const titleVisible=()=>{const title=q('game-title');return Boolean(title&&title.textContent===project.title&&title.getBoundingClientRect().height>0&&getComputedStyle(title).visibility==='visible'&&getComputedStyle(title).opacity==='1');};
+ check('開始前から教材タイトルを表示',titleVisible());
+ const relativeTitleRect=()=>{const a=q('game-title')?.getBoundingClientRect(),f=root.querySelector('.game-frame').getBoundingClientRect();return a&&{x:a.x-f.x,y:a.y-f.y,width:a.width,height:a.height};};
+ const initial=relativeTitleRect();
+ game.start();await frame();check('最初の移動中もタイトルを表示',titleVisible());
+ advance(fusumaManifest.timings.travelMs);await frame();check('出題時もタイトルを表示',titleVisible()&&!q('quiz').hidden);
+ const submit=value=>{q('input').value=value;q('quiz').requestSubmit();};
+ submit('a');check('正解表示中もタイトルを表示',titleVisible()&&!q('answer-card').hidden);
+ const t=fusumaManifest.timings;
+ advance(t.answerHoldMs);check('襖が開く間もタイトルを表示',titleVisible()&&q('stage').classList.contains('is-open'));
+ advance(t.doorOpenMs+t.doorSettleMs);check('次の部屋への移動中もタイトルを表示',titleVisible()&&q('stage').classList.contains('is-moving'));
+ advance(t.travelMs);check('二問目でもタイトルを表示',titleVisible()&&q('question').textContent==='いを入力');
+ submit('i');advance(t.answerHoldMs+t.doorOpenMs+t.doorSettleMs+t.travelMs+t.resultArrivalMs);await frame();
+ check('クリア画面でもタイトルを表示',titleVisible()&&!q('result-card').hidden);
+ advance(t.resultRevealMs+t.resultTransitionMs);await frame();
+ const final=relativeTitleRect();
+ check('移動やクリア演出でタイトルの位置・大きさが変わらない',Boolean(initial&&final&&['x','y','width','height'].every(k=>Math.abs(initial[k]-final[k])<1)));
+ q('replay').click();check('再プレイでもタイトルを表示',titleVisible());
+ const literal='<img src=x onerror=alert(1)> & 歴史';game.restart({...project,title:literal});
+ check('タイトルをHTMLではなく文字として安全に表示',q('game-title')?.textContent===literal&&!q('game-title')?.querySelector('img'));
+ game.restart({...project,title:'   '});check('未設定のタイトルには既定名を表示',q('game-title')?.textContent==='タイピングゲーム');
+ game.restart({...project,title:'歴史の復習・縄文時代から江戸時代までのとても長いタイピング教材タイトル',questions:[{...project.questions[0],prompt:'743年、開墾した土地を永久に自分のものにしてよいと定めた法律は？'.repeat(3)},project.questions[1]]});
+ advance(t.travelMs);
+ for(const width of [320,480,600,640,1280]){
+  host.style.width=width+'px';host.style.maxWidth='none';await frame();
+  const title=q('game-title'),a=title?.getBoundingClientRect(),b=q('status').getBoundingClientRect(),f=root.querySelector('.game-frame').getBoundingClientRect();
+  const questionRect=q('question').getBoundingClientRect();
+  check(width+'px幅でも左上に収まり問題番号と重ならない',Boolean(a&&a.left>=f.left&&a.top>=f.top&&a.right<b.left&&a.bottom<f.top+f.height*.25));
+  check(width+'px幅でも長いタイトルが問題文を隠さない',Boolean(a&&(a.right<=questionRect.left||a.bottom<=questionRect.top)));
+ }
+ host.style.width='960px';host.style.maxWidth='100%';game.restart(project);
+}catch(error){check(error.message,false);}
+document.body.dataset.status=failures?'fail':'pass';document.title=failures?'FAIL: fusuma title':'PASS: fusuma title';
+</script></body></html>

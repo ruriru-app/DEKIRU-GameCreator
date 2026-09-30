@@ -1,5 +1,6 @@
 {
   "commit": "bf15e63",
+  "note": "2026-09-30: approved persistent title overlay updates renderer/style only; all other runtime, input, animation and asset hashes remain unchanged.",
   "files": {
     "Typing/core/romaji-converter.js": "238dca432a173e8d3306fa7bfa708df188e14de99d752575a7878037970c66a5",
     "Typing/core/typing-engine.js": "b7d50958fa09152360fb2d08d94767d673efbb5a216f6085d638e53e60fb14e2",
@@ -20,8 +21,8 @@
     "Typing/templates/fusuma/assets/images/sunny.png": "7f040d127fbc640732278082cc92e56e408ef75dccf7ba7d27801259dd018fdd",
     "Typing/templates/fusuma/event-controller.js": "8a46e5d02e08d1de913a3a219ae2afe31a04b8b01107379b92e10081c77b9cf4",
     "Typing/templates/fusuma/manifest.js": "4d7f01d3688c31cb96d2fb47975b769e96d332c01b4868ffc7799d8dda3ea104",
-    "Typing/templates/fusuma/renderer.js": "e7a546b0d4be05c3a6d758dcc857dfe91853cd7e2e6c2a0f16a16840630766fb",
-    "Typing/templates/fusuma/style.css": "f07bccf06f16e813cca842ff5e714a29a4a32fa58094b77be2bdc8b4a8af6470",
+    "Typing/templates/fusuma/renderer.js": "6c9a19cc19dd02da9f3e7782c4106d5a1c12479f15a8b0341cbee21e03c41c77",
+    "Typing/templates/fusuma/style.css": "0a6416783b1ed111db30b6eefa988ab6fa8e183c6263457e2b41d620ecbe5bc0",
     "core/audio-manager.js": "e6c265265d276cb960e69626d1fe7e5a2b51c0186c5e81c2172109b4f0b644ef",
     "core/html-exporter.js": "e4665c5df8ac377b44ec679417531826ea2a2f0d6dbe3b17a4312c740e13115b"
   }
