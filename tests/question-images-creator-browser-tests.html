@@ -1,0 +1,61 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><title>Image creator tests</title>
+<style>body{font:16px system-ui}iframe{width:1280px;height:800px;border:0}li{margin:4px}.fail{color:#a00}</style>
+<h1>画像と問題別プレビューの編集操作</h1><ol id="results"></ol><iframe src="../Typing/creator/index.html" title="編集画面"></iframe>
+<script type="module">
+import {pngBase64,bytesFrom} from './fixtures/question-images.mjs';
+const iframe=document.querySelector('iframe'),frame=()=>new Promise(requestAnimationFrame);
+let fail=0,pass=0;
+const assert=(v,msg)=>{if(!v)throw Error(msg);};
+async function check(name,fn){const li=document.createElement('li');try{await fn();pass++;li.textContent='PASS '+name;}catch(e){fail++;li.textContent='FAIL '+name+': '+e.message;li.className='fail';}document.querySelector('#results').append(li);}
+try{
+ for(let i=0;i<300&&!iframe.contentWindow.__DEKIRU_CREATOR__;i++)await frame();
+ const win=iframe.contentWindow,doc=iframe.contentDocument,app=win.__DEKIRU_CREATOR__;assert(app,'作成画面読込み');
+ const card=()=>doc.querySelector('[data-role=question-card]');
+ const game=()=>doc.querySelector('[data-role=game-host]').shadowRoot;
+ await check('プレビューが削除の次に並び、選択だけでは未保存にならない',async()=>{
+   const labels=[...card().querySelectorAll('.question-actions button')].map(n=>n.textContent);
+   assert(labels.join('|')==='↑|↓|複製|削除|プレビュー','ボタン順');
+   const before=JSON.stringify(app.store.getState());card().querySelector('[data-action=preview-question]').click();await frame();
+   assert(JSON.stringify(app.store.getState())===before,'選択は教材を変更しない');
+   assert(card().classList.contains('is-previewed'),'選択印');
+   assert(game().querySelector('[data-role=input]').readOnly,'静止表示');
+ });
+ if(!app.preview)throw Error('問題別プレビュー未実装');
+ await check('文章・題名の即時反映、キーボードフォーカス維持',async()=>{
+   const input=card().querySelector('[data-field=prompt]');input.focus();input.value='画像から考えてみましょう';input.dispatchEvent(new win.Event('input',{bubbles:true}));
+   const title=doc.querySelector('[data-role=set-title]');title.value='写真クイズ';title.dispatchEvent(new win.Event('input',{bubbles:true}));await frame();
+   assert(game().querySelector('[data-role=question]').textContent===input.value,'問題即時反映');
+   assert(game().querySelector('[data-role=game-title]').textContent==='写真クイズ','題名即時反映');
+   assert(doc.activeElement===input,'入力フォーカス維持');
+ });
+ await check('ファイル追加・配置・説明・複製・削除',async()=>{
+   const fileInput=card().querySelector('[data-role=question-image-file]');assert(fileInput,'画像選択欄');
+   const transfer=new win.DataTransfer();transfer.items.add(new win.File([bytesFrom(pngBase64)],'private.png',{type:'image/png'}));
+   fileInput.files=transfer.files;fileInput.dispatchEvent(new win.Event('change',{bubbles:true}));
+   assert(doc.querySelector('[data-action=save-project]').disabled,'処理中の保存を停止');
+   for(let i=0;i<300&&app.images.getState().busy;i++)await frame();
+   assert(app.store.getSnapshot().questions[0].image,'画像を取り込む');
+   const placement=card().querySelector('[data-role=image-placement]');placement.value='right';placement.dispatchEvent(new win.Event('change',{bubbles:true}));
+   const alt=card().querySelector('[data-role=image-alt]');alt.value='図形';alt.dispatchEvent(new win.Event('input',{bubbles:true}));await frame();
+   assert(game().querySelector('[data-role=quiz]').dataset.imagePlacement==='right','配置更新');
+   assert(game().querySelector('.question-image').alt==='図形','説明更新');
+   assert(app.store.getState().previewDirty,'静止確認ではゲーム全体の変更を消さない');
+   card().querySelector('[data-action=duplicate]').click();
+   assert(app.store.getSnapshot().questions[1].image.alt==='図形','画像も複製');
+   card().querySelector('[data-action=remove-image]').click();assert(!app.store.getSnapshot().questions[0].image,'画像だけ削除');
+ });
+ await check('PC右ペインは1280px縮小表示、静止→全体は開始画面',async()=>{
+   assert(Math.abs(game().querySelector('.game-frame').offsetWidth-1280)<1,'標準PC寸法');
+   doc.querySelector('[data-action=preview-game]').click();await frame();
+   assert(!game().querySelector('[data-role=start]').hidden,'最初から');
+   assert(app.store.getState().previewDirty===false,'最新を全体へ反映');
+ });
+ await check('選択中問題を削除すると隣へ移り、教材読込みで解除',async()=>{
+   const cards=doc.querySelectorAll('[data-role=question-card]');cards[1].querySelector('[data-action=preview-question]').click();
+   const selected=app.preview.getState().selectedId;cards[1].querySelector('[data-action=delete]').click();await frame();
+   assert(app.preview.getState().selectedId!==selected,'隣へ');
+   app.preview.reset();assert(app.preview.getState().selectedId===null,'選択解除');
+ });
+}catch(e){await check(e.message,()=>{throw e;});}
+document.body.dataset.status=fail?'fail':'pass';document.title=(fail?'FAIL':'PASS')+' Image creator '+pass+'/'+(pass+fail);
+</script></html>

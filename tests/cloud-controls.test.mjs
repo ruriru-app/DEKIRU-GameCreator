@@ -7,7 +7,7 @@ import {projectWith} from './fixtures/cloud-projects.mjs';
 import {ok,failure} from '../core/cloud/contracts.js';
 const meta={id:'game-a',version:1,title:'教材',questionCount:1,publication:null,publicationDirty:false};
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
-function setup(overrides={}) {
+function setup(overrides={},options={}) {
   const store=createProjectStore(projectWith()),cloudState=createCloudState({getProject:store.getSnapshot}),calls=[];
   const api={
     saveDraft:async value=>{calls.push(['save',value]);return ok({...meta,version:value.expectedVersion+1});},
@@ -15,7 +15,7 @@ function setup(overrides={}) {
     loadGame:async()=>ok({...meta,project:projectWith()}),
     ...overrides,
   };
-  const editor=createCloudEditor({store,cloudState,api});
+  const editor=createCloudEditor({store,cloudState,api,...options});
   editor.setUser({id:'a'});
   return {store,cloudState,calls,api,editor};
 }
@@ -110,4 +110,19 @@ test('failed copy and failed reload keep the original link and live edits',async
   s.api.loadGame=async()=>failure('NETWORK');
   assert.equal((await s.editor.load('game-a')).error.code,'NETWORK');
   assert.equal(s.editor.getState().gameMeta.id,'game-a');assert.equal(s.store.getSnapshot().title,'失わない変更');
+});
+
+test('pending image processing blocks save publish copy retry and leaving without confirmation',async()=>{
+  let allowed=false;
+  const s=setup({}, {canCommit:()=>allowed});
+  for(const work of [()=>s.editor.save(),()=>s.editor.publish(),()=>s.editor.saveCopy(),()=>s.editor.retry()])assert.equal((await work()).ok,false);
+  assert.equal(s.calls.length,0);assert.equal(s.editor.shouldWarnOnLeave(''),true);
+  allowed=true;s.api.saveDraft=async()=>failure('NETWORK');await s.editor.save();
+  allowed=false;assert.equal((await s.editor.retry()).ok,false);assert.equal(s.editor.getState().canRetry,true);
+});
+test('image processing started during save stops the subsequent publish request',async()=>{
+  let allowed=true;const gate=deferred();
+  const s=setup({saveDraft:()=>gate.promise},{canCommit:()=>allowed});
+  const work=s.editor.publish();allowed=false;gate.resolve(ok(meta));
+  assert.equal((await work).ok,false);assert.equal(s.calls.length,0);
 });

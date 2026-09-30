@@ -83,6 +83,8 @@
           <span>よみからローマ字を自動生成</span>
         </div>
         <div class="question-list" data-role="question-list"></div>
+        <p class="image-notice" data-role="image-capacity"></p>
+        <p class="image-notice">画像は表示に合う大きさに自動調整します。使う権利のある画像を選び、顔写真・名前などの個人情報を含めないでください。</p>
       </section>
     </section>
 
@@ -96,8 +98,9 @@
       </div>
 
       <div class="preview-shell">
-        <div class="game-host" data-role="game-host"></div>
+        <div class="preview-viewport"><div class="game-host" data-role="game-host"></div></div>
       </div>
+      <div class="preview-mode-bar"><span data-role="preview-mode">ゲーム全体</span><button type="button" class="secondary-button compact" data-action="preview-game">ゲーム全体に戻す</button></div>
 
       <div class="sound-controls" aria-label="音量設定">
         <label for="volume">音量 <output data-role="volume-output">80%</output></label>
@@ -105,7 +108,7 @@
         <label class="mute-control"><input data-role="mute" type="checkbox"> ミュート</label>
       </div>
 
-      <div class="preview-help"><b>編集しても、遊んでいる途中のゲームは止まりません。</b><span>変更内容は「プレビューを再スタート」で反映されます。</span></div>
+      <div class="preview-help"><b>各問題の「プレビュー」で、画像と問題文の配置をすぐ確認できます。</b><span>問題の確認中は音やゲーム進行を止めます。「ゲーム全体に戻す」と最新の内容で最初の画面に戻ります。遊んでいる間の編集は「再スタート」で反映されます。</span></div>
     </section>
   </main>
 

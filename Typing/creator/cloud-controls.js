@@ -6,13 +6,14 @@ import {buildShareUrl} from '../../core/cloud/share-url.js';
 import {downloadProject} from './project-file.js';
 
 const same=(a,b)=>serializeCloudProject(a)===serializeCloudProject(b);
-export function createCloudEditor({store,cloudState,api}) {
+export function createCloudEditor({store,cloudState,api,canCommit=()=>true}) {
   let user=null,epoch=0,busy=false,pending=null,savedRecord=null,conflict=false;
   const listeners=new Set();
   function getState(){return {user:user?{...user}:null,busy,conflict,canRetry:Boolean(pending),...cloudState.getState()};}
   function notify(){for(const fn of listeners) fn(getState());}
   function detach(){epoch++;busy=false;pending=null;savedRecord=null;conflict=false;cloudState.detach();notify();}
-  const gate=()=>!user?failure('UNAUTHENTICATED'):busy||pending?failure('VALIDATION','前の操作の確認が必要です。「通信を再確認」を押してください。'):null;
+  const processing=()=>!canCommit()?failure('VALIDATION','画像を処理中です。完了してから操作してください。'):null;
+  const gate=()=>processing()||(!user?failure('UNAUTHENTICATED'):busy||pending?failure('VALIDATION','前の操作の確認が必要です。「通信を再確認」を押してください。'):null);
   async function execute(operation) {
     const ticket=epoch;busy=true;notify();
     let result;
@@ -50,6 +51,7 @@ export function createCloudEditor({store,cloudState,api}) {
     if(!cloudState.isCloudSaved(confirmed)) {
       const saved=await save();if(!saved.ok) return saved;
     }
+    if(processing())return processing();
     if(ticket!==epoch || !same(confirmed,store.getSnapshot())) return failure('CONFLICT','保存中に編集がありました。新しい内容を確認してから配布してください。');
     const meta=cloudState.getState().gameMeta;
     return execute({method:'publishGame',args:{gameId:meta.id,expectedVersion:meta.version,requestId:crypto.randomUUID()}});
@@ -61,14 +63,14 @@ export function createCloudEditor({store,cloudState,api}) {
       if(user?.id!==value?.id) detach();
       user=value?{...value}:null;notify();
     },
-    retry(){return !user?Promise.resolve(failure('UNAUTHENTICATED')):!pending||busy?Promise.resolve(failure('VALIDATION')):execute(pending);},
+    retry(){return processing()?Promise.resolve(processing()):!user?Promise.resolve(failure('UNAUTHENTICATED')):!pending||busy?Promise.resolve(failure('VALIDATION')):execute(pending);},
     async load(id,{canReplace=()=>true,onLoaded=()=>{}}={}) {
       const error=gate();if(error) return error;
       const ticket=epoch,snapshot=store.getSnapshot();busy=true;notify();
       let result;try {result=await api.loadGame(id);} catch {result=failure('NETWORK');}
       if(ticket!==epoch) return failure('CONFLICT');
       busy=false;
-      if(!same(snapshot,store.getSnapshot())||!canReplace()){notify();return failure('CONFLICT','読み込み中に編集がありました。現在の内容は置き換えていません。');}
+      if(!canCommit()||!same(snapshot,store.getSnapshot())||!canReplace()){notify();return failure('CONFLICT','読み込み中に編集がありました。現在の内容は置き換えていません。');}
       if(result.ok) {
         conflict=false;
         store.loadProject(result.data.project,{source:'cloud'});
@@ -83,7 +85,7 @@ export function createCloudEditor({store,cloudState,api}) {
     },
     getResumeLink(){return user && savedRecord?{ownerId:user.id,record:structuredClone(savedRecord)}:null;},
     shouldWarnOnLeave(unappliedPaste='') {
-      return Boolean(unappliedPaste.trim() || pending || (store.getState().unsavedChanges && !cloudState.isCloudSaved(store.getSnapshot())));
+      return Boolean(!canCommit() || unappliedPaste.trim() || pending || (store.getState().unsavedChanges && !cloudState.isCloudSaved(store.getSnapshot())));
     },
     destroy(){detach();listeners.clear();},
   };
@@ -96,8 +98,9 @@ export function mountCloudControls({
   onProjectLoaded=()=>{},getUnappliedPaste=getPasteText,onAuthNavigation=()=>{},
   returnTo='Typing/creator/index.html',gameId=null,
   copyText=text=>navigator.clipboard.writeText(text),
+  canCommit=()=>true,subscribeCommitState=()=>()=>{},
 }) {
-  const editor=createCloudEditor({store,cloudState,api});
+  const editor=createCloudEditor({store,cloudState,api,canCommit});
   let destroyed=false,identityRevision=0,context=null,activeChoice=null,authNavigating=false;
   const page=root.ownerDocument.defaultView;
   function setAuthNavigation(value){authNavigating=value;onAuthNavigation(value);}
@@ -129,6 +132,7 @@ export function mountCloudControls({
     q('[data-cloud-save-state]').textContent=state.busy?'通信中…':!state.gameMeta?'オンラインには未保存です':state.cloudDirty?'オンライン保存後に変更があります':state.publicationDirty?'オンライン保存済み・配布内容には未反映です':'オンライン保存済み';
     let url='';if(pub?.status==='published') {try{url=buildShareUrl(appBaseUrl,pub.shareId);}catch{}}
     q('[data-cloud-url]').value=url;q('[data-cloud-link]').hidden=!url;
+    if(!canCommit())for(const name of ['login','logout','save','publish','retry','save-copy','reload'])buttons[name].disabled=true;
   }
   async function refreshContext(){
     if(!configured||!editor.getState().user)return;
@@ -167,6 +171,7 @@ export function mountCloudControls({
     render();if(result.ok)void refreshContext();
   }
   async function login() {
+    if(!canCommit()){message('画像の処理が完了してからログインしてください。');return;}
     const state=store.getState(),{dirty,previewDirty,unsavedChanges,hasProjectFile}=state;
     const saved=saveAuthResume(storage,{project:state.project,pasteText:getPasteText(),fileState:{dirty,previewDirty,unsavedChanges,hasProjectFile},cloudLink:editor.getResumeLink(),returnTo});
     if(!saved.ok){message(saved.error.message);return;}
@@ -177,6 +182,8 @@ export function mountCloudControls({
   async function logout() {
     const choice=await choose('ログアウトしますか？','編集中の問題をこの画面に残すか、編集用ファイルに保存して画面から消すかを選べます。公開したゲームは停止されません。',[['cancel','キャンセル'],['keep','編集内容を残す'],['clear','ファイル保存して消す']]);
     if(choice==='cancel')return;
+    if(!canCommit()){message('画像の処理が完了してから操作してください。');return;}
+    const logoutSnapshot=store.getSnapshot(),logoutPaste=getPasteText();
     if(choice==='clear'){
       if(getUnappliedPaste().trim()){message('貼り付け欄に未反映の内容があります。問題に反映するか、別に控えてからやり直してください。');return;}
       try{const snapshot=store.getSnapshot();downloadProject(snapshot);store.markSaved(snapshot);}
@@ -186,6 +193,9 @@ export function mountCloudControls({
     if(!result.ok){message(result.error.message);return;}
     setIdentity(null);
     if(choice==='clear'){
+      if(!canCommit()||!same(logoutSnapshot,store.getSnapshot())||logoutPaste!==getPasteText()){
+        message('ログアウトしました。通信中に編集があったため、この画面の内容は残しています。');return;
+      }
       store.loadProject({...store.getSnapshot(),title:'',questions:[]},{source:'temporary'});
       setPasteText('');onProjectLoaded();
     }
@@ -200,7 +210,7 @@ export function mountCloudControls({
       const state=editor.getState(),snapshot=store.getSnapshot(),pasteBefore=getPasteText();
       if(!state.gameMeta||state.busy||state.canRetry)return;
       const choice=await choose('保存版を読み直しますか？','この画面の編集内容と貼り付け欄を、オンラインの最新版に置き換えます。残したい場合はキャンセルし、別の教材として保存するか、編集用ファイルへ保存してください。',[['cancel','キャンセル'],['confirm','置き換えて読み直す']]);
-      if(choice!=='confirm')return;
+      if(choice!=='confirm'||!canCommit()){if(!canCommit())message('画像の処理が完了してから操作してください。');return;}
       const unchanged=()=>!destroyed&&editor.getState().user?.id===state.user?.id&&
         editor.getState().gameMeta?.id===state.gameMeta.id&&same(snapshot,store.getSnapshot())&&getPasteText()===pasteBefore;
       if(!unchanged()){message('確認中に編集内容やログイン状態が変わりました。置き換えていません。');return;}
@@ -211,7 +221,7 @@ export function mountCloudControls({
       if(getUnappliedPaste().trim()){message('貼り付け欄に未反映の内容があります。先に「問題を読み込む」で確認してください。');return;}
       const snapshot=store.getSnapshot(),owner=editor.getState().user?.id;
       const choice=await choose('この内容を配布しますか？',(snapshot.title||'（セット名なし）')+' ／ '+snapshot.questions.length+'問。リンクを知っている人が閲覧できます。個人情報を含まないか確認してください。',[['cancel','キャンセル'],['confirm','この内容で配布する']]);
-      if(choice!=='confirm')return;
+      if(choice!=='confirm'||!canCommit()){if(!canCommit())message('画像の処理が完了してから操作してください。');return;}
       if(owner!==editor.getState().user?.id||!same(snapshot,store.getSnapshot())){message('確認中に内容やログイン状態が変わりました。もう一度確認してください。');return;}
       await report(editor.publish(),'配布内容を更新しました。下のURLをコピーして渡せます。');
     },
@@ -220,7 +230,11 @@ export function mountCloudControls({
       catch{q('[data-cloud-url]').focus();q('[data-cloud-url]').select();message('自動コピーができませんでした。URL欄から手動でコピーしてください。');}
     },
   };
-  for(const [name,fn] of Object.entries(handlers)) buttons[name].addEventListener('click',fn);
+  for(const [name,fn] of Object.entries(handlers)){
+    handlers[name]=()=>{if(name!=='copy'&&!canCommit()){message('画像の処理が完了してから操作してください。');return;}return fn();};
+    buttons[name].addEventListener('click',handlers[name]);
+  }
+  const unsubCommit=subscribeCommitState(render);
   const unsubStore=store.subscribe(render),unsubEditor=editor.subscribe(render);
   const unsubAuth=auth.subscribe(setIdentity);
   render();
@@ -250,6 +264,6 @@ export function mountCloudControls({
     ready,editor,
     detach(){editor.detach();message('');render();},
     shouldWarnOnLeave:()=>editor.shouldWarnOnLeave(getUnappliedPaste()),
-    destroy(){destroyed=true;identityRevision++;page?.removeEventListener('pageshow',onPageShow);activeChoice?.();unsubStore();unsubEditor();unsubAuth();editor.destroy();for(const [name,fn]of Object.entries(handlers))buttons[name].removeEventListener('click',fn);},
+    destroy(){destroyed=true;identityRevision++;page?.removeEventListener('pageshow',onPageShow);activeChoice?.();unsubStore();unsubEditor();unsubAuth();unsubCommit();editor.destroy();for(const [name,fn]of Object.entries(handlers))buttons[name].removeEventListener('click',fn);},
   };
 }

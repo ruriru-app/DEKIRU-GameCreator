@@ -6,7 +6,9 @@ import { normalizeReading, readingToRomaji, romajiToHiragana } from '../core/rom
 import { createTypingEngine } from '../core/typing-engine.js';
 import { fusumaManifest } from '../templates/fusuma/manifest.js';
 import { createFusumaEventController } from '../templates/fusuma/event-controller.js';
-import { mountFusumaGame } from '../templates/fusuma/renderer.js';
+import { mountFusumaGame, mountFusumaQuestionPreview } from '../templates/fusuma/renderer.js';
+import { createPreviewController } from './preview-controller.js';
+import { createQuestionImageController } from './question-image-controller.js';
 import { createProjectStore } from './creator-state.js';
 import { downloadProject, parseProjectFile, MAX_PROJECT_BYTES } from './project-file.js';
 import {createCloudState} from '../../core/cloud/cloud-state.js';
@@ -83,16 +85,63 @@ let appliedPasteText = '';
 let authNavigation = false;
 let cloudControls = null;
 const cloudState = createCloudState({getProject:store.getSnapshot});
-const game = mountFusumaGame({
-  host: elements.gameHost,
-  project: store.getSnapshot(),
-  manifest,
-  audioManager,
-  createEngine: createTypingEngine,
-  convertRomaji: romajiToHiragana,
-  createEventController: createFusumaEventController,
+const images = createQuestionImageController({store});
+const canCommit = () => !images.getState().busy;
+const preview = createPreviewController({
+  store,host:elements.gameHost,manifest,audioManager,
+  mountGame:options=>mountFusumaGame({...options,createEngine:createTypingEngine,
+    convertRomaji:romajiToHiragana,createEventController:createFusumaEventController}),
+  mountQuestion:mountFusumaQuestionPreview,onStateChange:updatePreviewState,
 });
-game.setVolume(store.getState().project.settings.volume);
+
+function guardImages() {
+  if(canCommit())return true;
+  showToast('画像を処理中です。完了してから操作してください。');return false;
+}
+
+function updatePreviewState(state=preview.getState()) {
+  for(const card of elements.questionList.children){
+    const selected=state.mode==='question'&&card.dataset.id===state.selectedId;
+    card.classList.toggle('is-previewed',selected);
+    card.querySelector('[data-action=preview-question]')?.setAttribute('aria-pressed',String(selected));
+  }
+  const label=document.querySelector('[data-role=preview-mode]');
+  const index=store.getSnapshot().questions.findIndex(q=>q.id===state.selectedId);
+  label.textContent=state.mode==='game'?'ゲーム全体':index<0?'問題を選んでください':`${index+1}問目を確認中`;
+}
+
+function imageControls() {
+  const area=document.createElement('div');area.className='question-image-editor';
+  area.innerHTML='<div class="image-editor-head"><span>問題の画像 <small>（任意）</small></span><button type="button" class="secondary-button compact" data-action="choose-image">画像を追加</button><button type="button" data-action="remove-image" hidden>画像を外す</button></div><input type="file" data-role="question-image-file" accept="image/jpeg,image/png,image/webp" aria-label="問題の画像を選ぶ" hidden><div class="image-options" hidden><img data-role="image-thumbnail" loading="lazy" alt="選択した問題の画像"><label>配置<select data-role="image-placement"><option value="top">問題文の上</option><option value="bottom">問題文の下</option><option value="left">問題文の左</option><option value="right">問題文の右</option></select></label><label>画像の説明<input data-role="image-alt" maxlength="200" value="問題の画像" autocomplete="off"></label></div><p data-role="image-status" role="status" aria-live="polite"></p>';
+  return area;
+}
+
+function syncImageControls() {
+  const state=images.getState(),project=store.getSnapshot();
+  for(const card of elements.questionList.children){
+    const question=project.questions.find(q=>q.id===card.dataset.id);if(!question)continue;
+    const picture=question.image,pending=state.pendingIds.includes(question.id);
+    const area=card.querySelector('.question-image-editor');
+    area.querySelector('[data-action=choose-image]').textContent=picture?'画像を差し替える':'画像を追加';
+    area.querySelector('[data-action=remove-image]').hidden=!picture&&!pending;
+    area.querySelector('.image-options').hidden=!picture&&!pending;
+    const thumb=area.querySelector('[data-role=image-thumbnail]');thumb.hidden=!picture;
+    if(picture){
+      if(thumb.getAttribute('src')!==picture.dataUrl)thumb.src=picture.dataUrl;
+      for(const [role,value] of [['image-placement',picture.placement],['image-alt',picture.alt]]){
+        const input=area.querySelector(`[data-role=${role}]`);
+        if(document.activeElement!==input&&!pending)input.value=value;
+      }
+    }else thumb.removeAttribute('src');
+    const status=area.querySelector('[data-role=image-status]');
+    status.textContent=state.errors[question.id]||(pending?'画像を調整中…':picture?`${picture.width} × ${picture.height} px`:'JPEG・PNG・WebPを選べます（元画像10 MBまで）。');
+    status.classList.toggle('project-error',Boolean(state.errors[question.id]));
+  }
+  elements.saveButton.disabled=state.busy;
+  elements.exportButton.disabled=state.busy||exporting;
+  const bytes=new TextEncoder().encode(JSON.stringify(project)).byteLength;
+  document.querySelector('[data-role=image-capacity]').textContent=`教材データ：約 ${Math.ceil(bytes/1024)} KiB ／ オンライン上限 ${project.schemaVersion===2?'2 MiB':'256 KiB'}（文章のみ256 KiBまで）`;
+}
 
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -181,6 +230,7 @@ function renderQuestions() {
       actionButton('move-down', '↓', `${index + 1}問目を下へ`, index === questions.length - 1),
       actionButton('duplicate', '複製', `${index + 1}問目を複製`),
       actionButton('delete', '削除', `${index + 1}問目を削除`),
+      actionButton('preview-question', 'プレビュー', `${index + 1}問目をプレビュー`),
     );
     head.append(number, actions);
 
@@ -196,9 +246,11 @@ function renderQuestions() {
     hint.dataset.role = 'romaji-hint';
     hint.textContent = question.romajiHint || '—';
     fields.append(hint);
-    card.append(head, fields);
+    card.append(head, fields, imageControls());
     elements.questionList.append(card);
   });
+  updatePreviewState();
+  syncImageControls();
 }
 
 function updateMeta(state) {
@@ -221,6 +273,7 @@ function closeProjectConfirmation() {
 }
 
 elements.saveButton.addEventListener('click', () => {
+  if(!guardImages())return;
   showProjectError();
   try {
     const snapshot = store.getSnapshot();
@@ -270,6 +323,7 @@ elements.projectConfirm.addEventListener('cancel', event => {
 document.querySelector('[data-action="confirm-project-open"]').addEventListener('click', () => {
   if (!pendingProject) return;
   cloudControls?.detach();
+  images.reset();
   store.loadProject(pendingProject);
   syncProjectFields();
   elements.paste.value = '';
@@ -280,13 +334,15 @@ document.querySelector('[data-action="confirm-project-open"]').addEventListener(
 });
 
 function syncProjectFields() {
+  images.reset();
+  preview.reset();
   const project = store.getSnapshot();
   elements.title.value = project.title;
   elements.volume.value = String(project.settings.volume);
   elements.volumeOutput.textContent = `${Math.round(project.settings.volume * 100)}%`;
   elements.mute.checked = project.settings.muted;
-  game.setVolume(project.settings.volume);
-  game.setMuted(project.settings.muted);
+  preview.setVolume(project.settings.volume);
+  preview.setMuted(project.settings.muted);
   pendingImport = null;
   elements.confirm.hidden = true;
   renderQuestions();
@@ -307,7 +363,9 @@ function mapImportedRows(rows) {
 
 function applyPendingImport() {
   if (!pendingImport) return;
+  images.reset();
   store.replaceQuestions(mapImportedRows(pendingImport.rows));
+  preview.reset();
   renderImportErrors(pendingImport.errors);
   renderQuestions();
   elements.confirm.hidden = true;
@@ -354,6 +412,9 @@ document.querySelector('[data-action="cancel-replace"]').addEventListener('click
 });
 
 elements.questionList.addEventListener('input', (event) => {
+  if(event.target.matches('[data-role=image-alt]')){
+    images.setAlt(event.target.closest('[data-role=question-card]').dataset.id,event.target.value);return;
+  }
   const input = event.target.closest('[data-field]');
   if (!input) return;
   const card = input.closest('[data-role="question-card"]');
@@ -368,10 +429,26 @@ elements.questionList.addEventListener('input', (event) => {
   updateInlineField(input, id, field);
 });
 
+elements.questionList.addEventListener('change',event=>{
+  const id=event.target.closest('[data-role=question-card]')?.dataset.id;if(!id)return;
+  if(event.target.matches('[data-role=question-image-file]')){
+    const file=event.target.files?.[0];event.target.value='';
+    if(file)void images.select(id,file);
+  }
+  if(event.target.matches('[data-role=image-placement]'))images.setPlacement(id,event.target.value);
+});
+
 elements.questionList.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-action]');
   if (!button) return;
   const id = button.closest('[data-role="question-card"]').dataset.id;
+  if(button.dataset.action==='preview-question'){
+    preview.selectQuestion(id);
+    if(matchMedia('(max-width: 880px)').matches)document.querySelector('.preview-pane').scrollIntoView({block:'start',behavior:'smooth'});
+    return;
+  }
+  if(button.dataset.action==='choose-image'){button.closest('[data-role=question-card]').querySelector('[data-role=question-image-file]').click();return;}
+  if(button.dataset.action==='remove-image'){images.remove(id);return;}
   if (button.dataset.action === 'duplicate') store.duplicateQuestion(id);
   if (button.dataset.action === 'delete') store.removeQuestion(id);
   if (button.dataset.action === 'move-up') store.moveQuestion(id, -1);
@@ -379,7 +456,7 @@ elements.questionList.addEventListener('click', (event) => {
   renderQuestions();
 });
 
-document.querySelector('[data-action="restart-preview"]').addEventListener('click', () => {
+function showFullPreview(restart=false) {
   const errors = projectErrors();
   renderImportErrors(errors);
   if (errors.length) {
@@ -388,24 +465,26 @@ document.querySelector('[data-action="restart-preview"]').addEventListener('clic
     showToast('入力エラーを修正してから再スタートしてください。');
     return;
   }
-  game.restart(store.getSnapshot());
-  store.markPreviewed();
-  showToast('最新の問題でプレビューを再スタートしました。');
-});
+  try{restart?preview.restartGame():preview.showGame();}
+  catch(error){showToast(error.message);}
+}
+document.querySelector('[data-action="restart-preview"]').addEventListener('click',()=>showFullPreview(true));
+document.querySelector('[data-action="preview-game"]').addEventListener('click',()=>showFullPreview());
 
 elements.volume.addEventListener('input', () => {
   const value = Number(elements.volume.value);
   store.setVolume(value);
-  game.setVolume(value);
+  preview.setVolume(value);
   elements.volumeOutput.textContent = `${Math.round(value * 100)}%`;
 });
 elements.mute.addEventListener('change', () => {
   store.setMuted(elements.mute.checked);
-  game.setMuted(elements.mute.checked);
+  preview.setMuted(elements.mute.checked);
 });
 
 elements.exportButton.addEventListener('click', async () => {
   if (exporting) return;
+  if (!guardImages()) return;
   const errors = projectErrors();
   renderImportErrors(errors);
   if (errors.length) {
@@ -423,6 +502,7 @@ elements.exportButton.addEventListener('click', async () => {
   try {
     const snapshot = store.getSnapshot();
     const bundle = await loadTemplateBundle(manifest);
+    if(!canCommit()||JSON.stringify(snapshot)!==JSON.stringify(store.getSnapshot()))throw Error('準備中に変更がありました。最新の内容でもう一度書き出してください。');
     const html = buildStandaloneHtml({ project: snapshot, bundle });
     downloadStandaloneHtml({ html, filename: snapshot.title });
     store.markExported(snapshot);
@@ -430,29 +510,31 @@ elements.exportButton.addEventListener('click', async () => {
   } catch (error) {
     console.error(error);
     elements.exportState.textContent = '書き出しに失敗しました。内容は保持されています';
-    showToast('書き出しに失敗しました。もう一度お試しください。');
+    showToast(error.message||'書き出しに失敗しました。もう一度お試しください。');
   } finally {
     exporting = false;
-    elements.exportButton.disabled = false;
+    elements.exportButton.disabled = !canCommit();
     elements.exportButton.textContent = originalLabel;
     if (!store.getState().dirty) elements.exportState.textContent = '遊べるHTMLを書き出しました';
     else if (elements.exportState.textContent === '画像と音声をまとめています') updateMeta(store.getState());
   }
 });
 store.subscribe(updateMeta);
+store.subscribe(syncImageControls);
+images.subscribe(syncImageControls);
 renderQuestions();
 updateMeta(store.getState());
 
 window.addEventListener('beforeunload', (event) => {
   if (authNavigation) return;
   const unappliedPaste=elements.paste.value!==appliedPasteText?elements.paste.value:'';
-  const warn=cloudControls?cloudControls.shouldWarnOnLeave():Boolean(store.getState().unsavedChanges||unappliedPaste.trim());
+  const warn=!canCommit()||(cloudControls?cloudControls.shouldWarnOnLeave():Boolean(store.getState().unsavedChanges||unappliedPaste.trim()));
   if (!warn) return;
   event.preventDefault();
   event.returnValue = '';
 });
 
-window.__DEKIRU_CREATOR__ = { store, game, manifest };
+window.__DEKIRU_CREATOR__ = { store, preview, images, manifest };
 
 void (async()=>{
   const cloud=await loadBrowserCloud();
@@ -464,6 +546,7 @@ void (async()=>{
     getUnappliedPaste:()=>elements.paste.value!==appliedPasteText?elements.paste.value:'',
     setPasteText:text=>{elements.paste.value=text;appliedPasteText='';},
     onProjectLoaded:syncProjectFields,onAuthNavigation:value=>{authNavigation=value;},
+    canCommit,subscribeCommitState:images.subscribe,
     returnTo:'Typing/creator/index.html'+(gameId?'?game='+gameId:''),
   });
   await cloudControls.ready;

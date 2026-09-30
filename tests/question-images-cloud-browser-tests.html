@@ -1,0 +1,42 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><title>Image cloud guard tests</title>
+<h1>画像処理と保存・ログインの保護</h1><ol id="results"></ol><section id="controls"></section>
+<script type="module">
+import {mountCloudControls} from '../Typing/creator/cloud-controls.js';
+import {createCloudState} from '../core/cloud/cloud-state.js';
+import {createProjectStore} from '../Typing/creator/creator-state.js';
+import {imageProject,pngImage} from './fixtures/question-images.mjs';
+import {memoryStorage} from './fixtures/memory-storage.mjs';
+import {ok} from '../core/cloud/contracts.js';
+const root=document.querySelector('#controls'),wait=()=>new Promise(r=>setTimeout(r,30));let failures=0;
+function check(name,value){const li=document.createElement('li');li.textContent=(value?'PASS ':'FAIL ')+name;document.querySelector('#results').append(li);if(!value)failures++;}
+function setup({user={id:'owner'},storage=memoryStorage(),signOut=async()=>ok(null)}={}){
+  const store=createProjectStore(imageProject()),calls=[];let processing=false,listener=()=>{};
+  const ui=mountCloudControls({root,store,cloudState:createCloudState({getProject:store.getSnapshot}),configured:true,storage,
+    getPasteText:()=>'',setPasteText:()=>{},canCommit:()=>!processing,subscribeCommitState:fn=>{listener=fn;return()=>{};},
+    auth:{getUser:async()=>ok(user),subscribe:()=>()=>{},signOut,startGoogleSignIn:async()=>{calls.push('login');return ok(null);}},
+    api:{getContext:async()=>ok({capabilities:{questionImages:true},counts:{games:0,publications:0},limits:{games:20,publications:10}}),
+      saveDraft:async()=>{calls.push('save');return ok({id:'test',version:1});},publishGame:async()=>{calls.push('publish');return ok({});}}});
+  return {store,ui,calls,busy(value){processing=value;listener();}};
+}
+const button=a=>root.querySelector('[data-cloud-action="'+a+'"]');
+try{
+ const a=setup();await a.ui.ready;
+ button('publish').click();await wait();a.busy(true);
+ root.querySelector('[data-choice=confirm]').click();await wait();
+ check('確認画面の途中で画像処理が始まれば配布しない',a.calls.length===0&&root.textContent.includes('画像の処理'));
+ check('処理中は保存・公開・再試行・別名保存を無効化', ['save','publish','retry','save-copy'].every(n=>button(n).disabled));
+ for(const n of ['save','publish','retry','save-copy'])button(n).dispatchEvent(new Event('click'));
+ await wait();check('イベント直接送信でも通信を開始せず離脱警告',a.calls.length===0&&a.ui.shouldWarnOnLeave());a.ui.destroy();
+ const b=setup({user:null});await b.ui.ready;b.busy(true);button('login').dispatchEvent(new Event('click'));await wait();
+ check('画像処理中はログインへ移動しない',b.calls.length===0&&button('login').disabled);b.ui.destroy();
+ const c=setup({user:null,storage:{getItem:()=>null,removeItem(){},setItem(){throw Error('quota');}}});await c.ui.ready;
+ button('login').click();await wait();check('退避容量不足なら画像を失わずログインを止める',c.calls.length===0&&c.store.getSnapshot().questions[0].image.dataUrl===pngImage.dataUrl);c.ui.destroy();
+ // Suppress a synthetic fixture download while exercising the real logout handler.
+ document.addEventListener('click',e=>{if(e.target.closest('a[download]'))e.preventDefault();},true);
+ let finish;const d=setup({signOut:()=>new Promise(r=>finish=r)});await d.ui.ready;
+ button('logout').click();await wait();root.querySelector('[data-choice=clear]').click();await wait();
+ d.busy(true);d.store.setTitle('ログアウト通信中の編集');finish(ok(null));await wait();
+ check('ログアウト通信中に編集された画像教材を消さない',d.store.getSnapshot().questions.length===1&&d.store.getSnapshot().title==='ログアウト通信中の編集');d.ui.destroy();
+}catch(e){check('例外 '+e.message,false);}
+document.body.dataset.status=failures?'fail':'pass';document.title=(failures?'FAIL':'PASS')+' Image cloud guards';
+</script></html>

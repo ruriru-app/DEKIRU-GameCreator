@@ -107,6 +107,22 @@ button { border: 0; cursor: pointer; }
 .preview-actions { display: flex; align-items: center; gap: 9px; }
 .preview-shell { padding: clamp(10px, 1.5vw, 18px); overflow: hidden; }
 .game-host { width: 100%; }
+.preview-viewport { width: 100%; overflow: hidden; }
+.preview-mode-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--purple-deep); font-weight: 800; }
+.preview-pane { scroll-margin-top: 100px; }
+.question-card.is-previewed { border-color: var(--purple); box-shadow: 0 0 0 2px var(--purple-soft); }
+.question-actions [aria-pressed="true"] { color: #fff; background: var(--purple-deep); }
+.question-image-editor { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.image-editor-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; }
+.image-editor-head small { font-weight: 400; }
+.image-editor-head [data-action=remove-image] { padding: 8px; border-radius: 8px; color: var(--brown); background: var(--cream); }
+.image-options { display: grid; grid-template-columns: 76px minmax(0,1fr); align-items: center; gap: 9px; margin-top: 12px; }
+.image-options[hidden] { display: none; }
+.image-options img { width: 76px; height: 76px; grid-row: span 2; object-fit: contain; border: 1px solid var(--line); border-radius: 8px; }
+.image-options label { display: grid; gap: 4px; font-size: 11px; }
+.image-options input,.image-options select { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--brown-deep); background: white; }
+.question-image-editor [data-role=image-status],.image-notice { margin: 10px 0 0; font-size: 11px; line-height: 1.7; }
+.primary-button:disabled { opacity: .55; cursor: wait; }
 .sound-controls { display: grid; grid-template-columns: auto minmax(120px, 1fr) auto; align-items: center; gap: 12px; margin-top: 14px; padding: 14px 18px; }
 .sound-controls label { font-size: 12px; font-weight: 900; }
 .sound-controls output { color: var(--purple-deep); }
