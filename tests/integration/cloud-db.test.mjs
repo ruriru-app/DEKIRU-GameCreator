@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {createLocalTestClients} from './local-supabase.mjs';
 import {projectWith,projectBytes} from '../fixtures/cloud-projects.mjs';
 import {serializeCloudProject,validateCloudProject} from '../../core/cloud/project-validation.js';
-import {imageProject,pngImage,imageAtBytes} from '../fixtures/question-images.mjs';
+import {imageProject,pngImage,imageAtBytes,zeroComponentJpeg,invalidJpegScans} from '../fixtures/question-images.mjs';
 import {imageProjectBytes,imageTextBytes} from '../fixtures/cloud-image-projects.mjs';
 const args=(gameId=null,expectedVersion=0,project=projectWith())=>({requestId:randomUUID(),gameId,expectedVersion,projectText:serializeCloudProject(project)});
 async function call(client,command,value) {
@@ -60,7 +60,7 @@ test('image projects have matching JS/DB validation and exact canonical capacity
   admin.setImageWrites(true);t.after(()=>admin.setImageWrites(false));
   const cases=[imageProject(),imageProject(imageAtBytes(131072)),imageProject(imageAtBytes(131073)),
     imageProjectBytes(2097152),imageProjectBytes(2097153),imageTextBytes(262144),imageTextBytes(262145),
-    imageProject({...pngImage,alt:'😀'.repeat(101)}),imageProject({...pngImage,width:2})];
+    imageProject({...pngImage,alt:'😀'.repeat(101)}),imageProject({...pngImage,width:2}),imageProject(zeroComponentJpeg),...invalidJpegScans().map(imageProject)];
   for(const p of cases){
     const expected=validateCloudProject(p),text=serializeCloudProject(p),db=admin.validateProject(text);
     assert.equal(db.canonical,text,'SQL and JS canonical bytes agree');

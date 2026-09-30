@@ -62,6 +62,27 @@ try{
    const panel=role(stillHost,'quiz').getBoundingClientRect(),input=role(stillHost,'input').getBoundingClientRect(),content=stillHost.shadowRoot.querySelector('.question-content');
    assert(input.bottom<=panel.bottom&&content.scrollHeight>content.clientHeight,'内容だけスクロール');
  });
+ await check('画像を追加しても問題文の文字サイズと行間を縮めない',async()=>{
+   for(const width of [601,800,1280]){
+     stillHost.style.width=width+'px';const plain=imageProject();delete plain.questions[0].image;
+     preview.update({project:plain,questionId:'q1'});await frame();
+     const textStyle=getComputedStyle(role(stillHost,'question')),font=textStyle.fontSize,line=textStyle.lineHeight;
+     preview.update({project:imageProject({...pngImage,placement:'left'}),questionId:'q1'});await frame();
+     const imageStyle=getComputedStyle(role(stillHost,'question'));
+     assert(imageStyle.fontSize===font&&imageStyle.lineHeight===line,width+'px: '+imageStyle.fontSize+'/'+imageStyle.lineHeight+' vs '+font+'/'+line);
+   }
+ });
+ await check('左右画像の高さはゲーム幅600pxを境に切り替える',async()=>{
+   const canvas=document.createElement('canvas');canvas.width=40;canvas.height=400;
+   const p=imageProject({...pngImage,dataUrl:canvas.toDataURL(),width:40,height:400,placement:'left'});
+   for(const width of [600,601,800]){
+     stillHost.style.width=width+'px';preview.update({project:p,questionId:'q1'});await frame();
+     const content=role(stillHost,'question-content'),img=stillHost.shadowRoot.querySelector('.question-image');
+     await img.decode();
+     const expected=Math.min(content.clientHeight*(width<=600?.42:.9),width<=600?240:340);
+     assert(Math.abs(img.getBoundingClientRect().height-expected)<2,width+'px: '+img.getBoundingClientRect().height+' vs '+expected);
+   }
+ });
  await check('画像なしに戻すと前の画像を残さない・静止更新でフォーカスを奪わない',async()=>{
    const editor=document.createElement('input');document.body.prepend(editor);editor.focus();
    const p=imageProject();delete p.questions[0].image;preview.update({project:p,questionId:'q1'});await frame();

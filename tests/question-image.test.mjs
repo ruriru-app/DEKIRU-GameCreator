@@ -5,6 +5,8 @@ import {serializeProject,parseProjectFile,MAX_PROJECT_BYTES} from '../Typing/cre
 import {createProjectStore} from '../Typing/creator/creator-state.js';
 import {saveAuthResume,takeAuthResume} from '../core/cloud/auth-resume.js';
 import {memoryStorage} from './fixtures/memory-storage.mjs';
+import {zeroComponentJpeg,invalidJpegScans} from './fixtures/question-images.mjs';
+import {validateCloudProject} from '../core/cloud/project-validation.js';
 const formats = await import('../core/image-format.js').catch(e => {if(e.code==='ERR_MODULE_NOT_FOUND') return {};throw e;});
 const images = await import('../core/question-image.js').catch(e => {if(e.code==='ERR_MODULE_NOT_FOUND') return {};throw e;});
 const api = () => {assert.equal(typeof images.normalizeQuestionImage,'function');return images.normalizeQuestionImage;};
@@ -33,6 +35,14 @@ test('saved images enforce actual dimensions, types, exact keys and canonical ba
   }
   const incomplete={...pngImage};delete incomplete.alt;assert.throws(()=>normalize(incomplete));
   assert.equal(normalize({...pngImage,alt:'あ'.repeat(200)}).alt.length,200);
+});
+test('zero-component JPEG cannot be imported, exported, or published',()=>{
+  assert.throws(()=>api()(zeroComponentJpeg));
+  assert.throws(()=>serializeProject(imageProject(zeroComponentJpeg)));
+  assert.equal(validateCloudProject(imageProject(zeroComponentJpeg),{mode:'publish'}).ok,false);
+});
+test('JPEG scans require nonempty distinct components declared by their frame',()=>{
+  for(const image of invalidJpegScans())assert.throws(()=>api()(image));
 });
 test('128 KiB encoded image boundary accepts exact size but rejects one extra byte', () => {
   const normalize=api();

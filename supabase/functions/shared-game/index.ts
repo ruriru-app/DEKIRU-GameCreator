@@ -63,7 +63,7 @@
       invalid();
     }
     if (bytes[0] === 255 && bytes[1] === 216) {
-      let pos = 2, width, height, scan = false, hasScan = false;
+      let pos = 2, width, height, scan = false, hasScan = false, components = [];
       while (pos < bytes.length) {
         if (scan) {
           while (pos < bytes.length && bytes[pos] !== 255) pos++;
@@ -83,11 +83,17 @@
         if (length < 2 || end > bytes.length) invalid();
         if ([192, 193, 194].includes(marker)) {
           if (width !== void 0 || length < 8 || length !== 8 + 3 * bytes[pos + 7] || bytes[pos + 2] !== 8) invalid();
+          const count = bytes[pos + 7];
+          if (count < 1 || count > 4) invalid();
+          components = Array.from({ length: count }, (_, i) => bytes[pos + 8 + 3 * i]);
+          if (new Set(components).size !== count) invalid();
           height = view.getUint16(pos + 3);
           width = view.getUint16(pos + 5);
         }
         if (marker === 218) {
           if (width === void 0 || length < 6 || length !== 6 + 2 * bytes[pos + 2]) invalid();
+          const count = bytes[pos + 2], ids = Array.from({ length: count }, (_, i) => bytes[pos + 3 + 2 * i]);
+          if (count < 1 || count > components.length || new Set(ids).size !== count || ids.some((id) => !components.includes(id))) invalid();
           scan = true;
           hasScan = true;
         }

@@ -7,6 +7,7 @@ create function pg_temp.image_project() returns jsonb language sql as $$
  select jsonb_set(jsonb_set(pg_temp.project(),'{schemaVersion}','2'),'{questions,0,image}',pg_temp.picture());
 $$;
 select is(private.validate_project(pg_temp.image_project()::text,'publish')->>'ok','true','v2 accepts bounded PNG');
+select is(private.validate_project(jsonb_set(pg_temp.image_project(),'{questions,0,image,dataUrl}',to_jsonb('data:image/jpeg;base64,/9j/wAAICAABAAEA/9oABgAAPwD/2Q=='::text))::text,'publish')->'error'->>'code','VALIDATION','zero-component JPEG cannot be published');
 select is(private.validate_project(jsonb_set(pg_temp.image_project(),'{schemaVersion}','1')::text,'draft')->'error'->>'code','VALIDATION','v1 image rejected');
 select is(private.validate_project(jsonb_set(pg_temp.image_project(),'{questions,0,image,width}','2')::text,'draft')->'error'->>'code','VALIDATION','actual dimensions checked');
 select is(private.validate_project(jsonb_set(pg_temp.image_project(),'{questions,0,image,filename}','"private.jpg"')::text,'draft')->'error'->>'code','VALIDATION','image extra keys rejected');

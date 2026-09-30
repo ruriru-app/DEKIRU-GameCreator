@@ -19,6 +19,7 @@ language plpgsql immutable set search_path='' as $$
 declare source text; encoded text; mime text; b bytea; size int; w int; h int; pos int; ending int; len bigint;
   marker int; kind text; has_data boolean=false; scan boolean=false; has_scan boolean=false;
   crc bigint; crc_table bigint[]='{}'; v bigint; i int; j int; depth int; color_type int;
+  components int[]='{}'; scan_components int[]; component int; component_count int;
 begin
   if jsonb_typeof(img) is distinct from 'object' or
     img-array['dataUrl','width','height','placement','alt']<>'{}'::jsonb or
@@ -92,11 +93,25 @@ begin
       if marker in (192,193,194) then
         if w is not null or len<8 then return false; end if;
         if len<>8+3*get_byte(b,pos+7) or get_byte(b,pos+2)<>8 then return false; end if;
+        component_count:=get_byte(b,pos+7);
+        if component_count not between 1 and 4 then return false; end if;
+        for i in 0..component_count-1 loop
+          component:=get_byte(b,pos+8+3*i);
+          if component=any(components) then return false; end if;
+          components:=array_append(components,component);
+        end loop;
         h:=private.image_uint(b,pos+3,2);w:=private.image_uint(b,pos+5,2);
       end if;
       if marker=218 then
         if w is null or len<6 then return false; end if;
         if len<>6+2*get_byte(b,pos+2) then return false; end if;
+        component_count:=get_byte(b,pos+2);scan_components:='{}';
+        if component_count<1 or component_count>cardinality(components) then return false; end if;
+        for i in 0..component_count-1 loop
+          component:=get_byte(b,pos+3+2*i);
+          if not(component=any(components)) or component=any(scan_components) then return false; end if;
+          scan_components:=array_append(scan_components,component);
+        end loop;
         scan:=true;has_scan:=true;
       end if;
       pos:=ending;

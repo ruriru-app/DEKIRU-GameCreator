@@ -9,6 +9,7 @@
 button, input { font: inherit; }
 
 .game-frame {
+  container-name: fusuma-frame;
   container-type: inline-size;
   --arrival-transform: scale(6) translateY(8%);
   background: #21160f;
@@ -306,7 +307,7 @@ button, input { font: inherit; }
   .result-card.is-compact button { margin-left: 10px; padding: 4px 11px; font-size: 12px; }
 }
 
-@container (max-width: 600px) {
+@container fusuma-frame (max-width: 600px) {
   .question { margin-bottom: .35em; line-height: 1.4; }
   .kana-preview:empty { display: none; }
   .input-label { gap: .15em; }
@@ -319,7 +320,7 @@ button, input { font: inherit; }
   .result-card.is-compact button { margin-left: 8px; padding: 4px 8px; font-size: clamp(9px, 2.5cqw, 12px); }
 }
 
-@container (max-width: 600px) {
+@container fusuma-frame (max-width: 600px) {
   .game-title { padding: .3em .65em; -webkit-line-clamp: 1; }
 }
 
@@ -332,6 +333,8 @@ button, input { font: inherit; }
   overflow: hidden;
 }
 .has-image .question-content {
+  /* Resolve the prompt font against the outer frame before creating a size container. */
+  font-size: clamp(13px, 2.7cqw, 29px);
   container-type: size;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -344,7 +347,7 @@ button, input { font: inherit; }
   overflow: auto;
   margin-bottom: clamp(4px, 1cqw, 12px);
 }
-.has-image .question { grid-area: question; margin: 0; overflow-wrap: anywhere; }
+.has-image .question { grid-area: question; margin: 0; overflow-wrap: anywhere; font-size: inherit; }
 .question-picture { grid-area: picture; margin: 0; min-width: 0; text-align: center; }
 .question-image { display: block; margin: auto; width: 100%; max-width: 480px; height: auto; max-height: min(42cqh, 240px); object-fit: contain; }
 .image-error { grid-area: error; color: #9a635b; font-size: 14px; margin: 0; }
@@ -360,7 +363,7 @@ button, input { font: inherit; }
 }
 .has-image:is([data-image-placement="left"],[data-image-placement="right"]) .question-image { max-height: min(90cqh, 340px); }
 
-@container (max-width: 600px) {
+@container fusuma-frame (max-width: 600px) {
   .quiz-panel.has-image { top: calc(50% + 20px); height: min(78%, calc(100% - 54px)); }
   .has-image[data-image-placement="left"] .question-content { grid-template-columns: minmax(0, 1fr); grid-template-areas: "picture" "question" "error"; }
   .has-image[data-image-placement="right"] .question-content { grid-template-columns: minmax(0, 1fr); grid-template-areas: "question" "picture" "error"; }

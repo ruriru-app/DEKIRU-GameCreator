@@ -6,6 +6,17 @@ export const bytesFrom = base64 => Uint8Array.from(atob(base64), c => c.charCode
 export const dataUrl = (bytes, mime = 'image/jpeg') => 'data:' + mime + ';base64,' + btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''));
 export const jpegImage = {dataUrl:'data:image/jpeg;base64,' + jpegBase64,width:1,height:1,placement:'top',alt:'問題の画像'};
 export const pngImage = {...jpegImage,dataUrl:'data:image/png;base64,' + pngBase64};
+export const zeroComponentJpeg = {...jpegImage,dataUrl:'data:image/jpeg;base64,/9j/wAAICAABAAEA/9oABgAAPwD/2Q=='};
+export function invalidJpegScans(){
+  const original=bytesFrom(jpegBase64);
+  const start=original.findIndex((byte,i)=>byte===255&&original[i+1]===218);
+  const length=original[start+2]*256+original[start+3];
+  const empty=new Uint8Array(original.length-length+6);
+  empty.set(original.subarray(0,start+2));empty.set([0,6,0,0,63,0],start+2);empty.set(original.subarray(start+2+length),start+8);
+  const unknown=original.slice();unknown[start+5]=255;
+  const duplicate=original.slice();duplicate[start+7]=duplicate[start+5];
+  return [empty,unknown,duplicate].map(bytes=>({...jpegImage,dataUrl:dataUrl(bytes)}));
+}
 export function imageAtBytes(size) {
   const original = bytesFrom(jpegBase64), result = new Uint8Array(size);
   if (size < original.length + 4) throw Error('Fixture too small');
