@@ -25,6 +25,18 @@ for(const [name,b64,type] of [['JPEG',jpegBase64,'image/jpeg'],['PNG透過',pngB
    assert(new Uint8Array(before).every((b,i)=>b===bytesFrom(b64)[i]),'元画像不変');
  });
 }
+await check('補助画像付きJPGは本体だけを取り込み、通常の保存形式に変換する',async()=>{
+  const canvas=document.createElement('canvas');canvas.width=80;canvas.height=40;
+  const ctx=canvas.getContext('2d');ctx.fillStyle='#b59ad9';ctx.fillRect(0,0,80,40);
+  const primary=bytesFrom(canvas.toDataURL('image/jpeg').split(',')[1]);
+  const auxiliary=bytesFrom(jpegBase64),source=new Uint8Array(primary.length+auxiliary.length);
+  source.set(primary);source.set(auxiliary,primary.length);
+  const before=source.slice();
+  const image=await process(new File([source],'camera.JPG',{type:'image/jpeg'}));
+  await checkImage(image);
+  assert(image.width===80&&image.height===40,'補助画像ではなく本体の寸法');
+  assert(source.every((byte,i)=>byte===before[i]),'元画像不変');
+});
 await check('形式・破損・10MiB超は拒否',async()=>{
   for(const f of [new File(['<svg/>'],'a.svg',{type:'image/svg+xml'}),new File([bytesFrom(jpegBase64).slice(0,-1)],'a.jpg'),new File([new Uint8Array(10485761)],'huge.jpg')]) {
     let refused=false;try{await process(f);}catch{refused=true;}assert(refused,'不正画像を拒否');

@@ -1,12 +1,12 @@
-import {readImageInfo} from '../../core/image-format.js';
+import {readQuestionImageSource} from './image-source.js';
 import {normalizeQuestionImage,QUESTION_IMAGE_LIMITS as limits} from '../../core/question-image.js';
 
 export async function processQuestionImage(file,{signal,placement='top',alt='問題の画像'}={}) {
   const checkAbort=()=>{if(signal?.aborted)throw new DOMException('画像処理を中止しました。','AbortError');};
   checkAbort();
   if(!(file instanceof Blob)||file.size>limits.sourceBytes||file.size===0) throw Error('元の画像は10 MiB以下にしてください。');
-  const source=new Uint8Array(await file.arrayBuffer());checkAbort();
-  const info=readImageInfo(source);
+  const sourceBytes=new Uint8Array(await file.arrayBuffer());checkAbort();
+  const {bytes:source,info}=readQuestionImageSource(sourceBytes);
   if(Math.max(info.width,info.height)>limits.sourceSide||info.width*info.height>limits.sourcePixels) throw Error('画像の寸法は長辺8192px・2500万画素以下にしてください。');
   let bitmap,canvas;
   try {
