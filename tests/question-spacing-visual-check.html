@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>余白調整の確認 | DEKIRU Game Creator</title>
+<style>
+html,body{margin:0;background:#faf7f0;color:#7a6e65;font:16px system-ui}
+#game{width:min(100%,1280px);margin:auto;--game-radius:0px;--game-shadow:none}
+footer{display:flex;gap:20px;align-items:center;justify-content:center;flex-wrap:wrap;padding:16px}
+select{font:inherit;padding:6px;border:1px solid #b59ad9;border-radius:8px;background:white;color:inherit}
+small{display:block;text-align:center;padding:0 16px 16px}
+</style>
+<div id="game"></div>
+<footer><label>画像の位置 <select id="placement"><option value="right">右</option><option value="left">左</option><option value="top">上</option><option value="bottom">下</option></select></label><label><input id="long" type="checkbox"> 長い問題文で確認</label></footer>
+<small>ローカルの表示確認用です。教材の保存・公開・クラウド接続は行いません。</small>
+<script type="module">
+import {mountFusumaQuestionPreview} from '../Typing/templates/fusuma/renderer.js';
+import {fusumaManifest as manifest} from '../Typing/templates/fusuma/manifest.js';
+import {processQuestionImage} from '../Typing/creator/image-processor.js';
+const photo=await processQuestionImage(await (await fetch(manifest.assets.images.room)).blob(),{placement:'right',alt:'畳と襖のある和室'});
+const prompt='写真のような畳のある部屋を何といいますか。';
+const project={schemaVersion:2,title:'画像つき問題・余白の確認',gameType:'typing',templateId:'fusuma',settings:{volume:0,muted:true},questions:[{id:'q1',prompt,displayAnswer:'和室',reading:'わしつ',romajiHint:'wasitu',image:photo}]};
+const preview=mountFusumaQuestionPreview({host:document.querySelector('#game'),project,questionId:'q1',manifest});
+const placement=document.querySelector('#placement'),long=document.querySelector('#long');
+function update(){project.questions[0].image.placement=placement.value;project.questions[0].prompt=long.checked?prompt.repeat(40):prompt;preview.update({project,questionId:'q1'});}
+placement.addEventListener('change',update);long.addEventListener('change',update);
+</script>
+</html>

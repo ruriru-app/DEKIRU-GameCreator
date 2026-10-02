@@ -53,6 +53,20 @@ try{
      }else assert(placement==='left'?ir.right<=q.left+1:q.right<=ir.left+1,'左右順序');
    });
  }
+ await check('短い画像付き問題は内容に合う高さになり大きな空白を残さない',async()=>{
+   stillHost.style.width='1280px';
+   for(const placement of ['top','bottom','left','right']){
+     const p=imageProject({...pngImage,placement});p.questions[0].prompt='写真の名前は何でしょう？';
+     preview.update({project:p,questionId:'q1'});await frame();
+     const root=stillHost.shadowRoot;
+     const img=root.querySelector('.question-image');await img.decode();await frame();
+     const panel=role(stillHost,'quiz').getBoundingClientRect(),content=role(stillHost,'question-content').getBoundingClientRect();
+     const contentBottom=Math.max(img.getBoundingClientRect().bottom,role(stillHost,'question').getBoundingClientRect().bottom);
+     assert(content.bottom-contentBottom<20,placement+': 問題の下に不要な空白 '+(content.bottom-contentBottom));
+     assert(panel.height<1280*9/16*.72,placement+': 短い問題でも上限の高さになっている');
+     assert(role(stillHost,'input').getBoundingClientRect().bottom<=panel.bottom,'入力欄を枠内に残す');
+   }
+ });
  await check('長文・縦長画像でも解答欄が押し出されない',async()=>{
    const canvas=document.createElement('canvas');canvas.width=40;canvas.height=400;
    const ctx=canvas.getContext('2d');ctx.fillStyle='#b59ad9';ctx.fillRect(0,0,40,400);
@@ -72,15 +86,17 @@ try{
      assert(imageStyle.fontSize===font&&imageStyle.lineHeight===line,width+'px: '+imageStyle.fontSize+'/'+imageStyle.lineHeight+' vs '+font+'/'+line);
    }
  });
- await check('左右画像の高さはゲーム幅600pxを境に切り替える',async()=>{
+ await check('縦長画像もゲーム幅600pxを境に上下・左右に収まる',async()=>{
    const canvas=document.createElement('canvas');canvas.width=40;canvas.height=400;
    const p=imageProject({...pngImage,dataUrl:canvas.toDataURL(),width:40,height:400,placement:'left'});
    for(const width of [600,601,800]){
      stillHost.style.width=width+'px';preview.update({project:p,questionId:'q1'});await frame();
      const content=role(stillHost,'question-content'),img=stillHost.shadowRoot.querySelector('.question-image');
      await img.decode();
-     const expected=Math.min(content.clientHeight*(width<=600?.42:.9),width<=600?240:340);
-     assert(Math.abs(img.getBoundingClientRect().height-expected)<2,width+'px: '+img.getBoundingClientRect().height+' vs '+expected);
+     const ir=img.getBoundingClientRect(),qr=role(stillHost,'question').getBoundingClientRect(),panel=role(stillHost,'quiz').getBoundingClientRect();
+     assert(ir.height>0&&ir.height<=341&&ir.width<=content.clientWidth+1,'縦長画像を縮小して収める');
+     assert(width<=600?ir.bottom<=qr.top+1:ir.right<=qr.left+1,width+'px: 画像の配置');
+     assert(role(stillHost,'input').getBoundingClientRect().bottom<=panel.bottom+1,'入力欄はスクロール領域の外に残る');
    }
  });
  await check('画像なしに戻すと前の画像を残さない・静止更新でフォーカスを奪わない',async()=>{

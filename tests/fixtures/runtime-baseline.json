@@ -1,6 +1,6 @@
 {
   "commit": "bf15e63",
-  "note": "2026-09-30: approved title and question-image display changes update renderer/style/exporter only; input, animation controller, audio and asset hashes remain unchanged.",
+  "note": "2026-10-02: approved question-panel spacing updates style.css only. Earlier title/image display updates remain; input, animation controller, audio and asset hashes are unchanged.",
   "files": {
     "Typing/core/romaji-converter.js": "238dca432a173e8d3306fa7bfa708df188e14de99d752575a7878037970c66a5",
     "Typing/core/typing-engine.js": "b7d50958fa09152360fb2d08d94767d673efbb5a216f6085d638e53e60fb14e2",
@@ -22,7 +22,7 @@
     "Typing/templates/fusuma/event-controller.js": "8a46e5d02e08d1de913a3a219ae2afe31a04b8b01107379b92e10081c77b9cf4",
     "Typing/templates/fusuma/manifest.js": "4d7f01d3688c31cb96d2fb47975b769e96d332c01b4868ffc7799d8dda3ea104",
     "Typing/templates/fusuma/renderer.js": "c56186bc1307ec0723687f7ffbb153f4c8fb49e4fcc7a6f0f1469dfd56a69eac",
-    "Typing/templates/fusuma/style.css": "baf1287b012ffc8cc021746fc81bea3780a30821d59540ce87e4dec4270e7700",
+    "Typing/templates/fusuma/style.css": "313c0a14618ab781760013f724e382e316648870f0ce4fafef697cc97b4f64eb",
     "core/audio-manager.js": "e6c265265d276cb960e69626d1fe7e5a2b51c0186c5e81c2172109b4f0b644ef",
     "core/html-exporter.js": "81a2733a13c8d190617cc44eeeb21c5d8c7d864ada04195d7829c545213e91ce"
   }
