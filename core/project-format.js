@@ -1,7 +1,9 @@
 import {normalizeQuestionImage} from './question-image.js';
+import {unpackProjectImages} from './project-image-pool.js';
 const record=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const keys=(v,allowed)=>Object.keys(v).every(k=>allowed.includes(k));
 export function normalizeProjectData(value,{strictKeys=false}={}) {
+  value=unpackProjectImages(value);
   if(!record(value)||![1,2].includes(value.schemaVersion)) throw Error('対応していない問題セットの形式・バージョンです。');
   if(value.gameType!=='typing'||value.templateId!=='fusuma') throw Error('この作成画面は Typing「和室・襖」の問題セットに対応しています。');
   const strict=strictKeys||value.schemaVersion===2,settings=value.settings;

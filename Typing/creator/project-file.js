@@ -1,4 +1,5 @@
 import {normalizeProjectData} from '../../core/project-format.js';
+import {packProjectImages} from '../../core/project-image-pool.js';
 
 export const MAX_PROJECT_BYTES = 5 * 1024 * 1024;
 
@@ -14,7 +15,7 @@ function checkSize(text) {
 }
 
 export function serializeProject(project) {
-  const checked = normalizeProjectData(project);
+  const checked = packProjectImages(normalizeProjectData(project));
   const text = JSON.stringify({ format: 'dekiru-game-creator', version: checked.schemaVersion, project: checked }, null, 2) + '\n';
   checkSize(text);
   return text;
@@ -29,7 +30,7 @@ export function parseProjectFile(text) {
   if (!record(data) || data.format !== 'dekiru-game-creator') {
     throw new Error('編集用の問題セットではありません。.dekiru.json ファイルを選んでください（遊ぶためのHTMLは開けません）。');
   }
-  if (![1,2].includes(data.version) || data.version !== data.project?.schemaVersion) throw new Error('このファイルのバージョンには対応していません。');
+  if (![1,2,3].includes(data.version) || data.version !== data.project?.schemaVersion) throw new Error('このファイルのバージョンには対応していません。');
   return normalizeProjectData(data.project);
 }
 

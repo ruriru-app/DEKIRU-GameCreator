@@ -52,7 +52,7 @@ test('128 KiB encoded image boundary accepts exact size but rejects one extra by
 });
 test('project v2 file round trip never drops images and rejects mismatched versions/keys', () => {
   const p=imageProject(), text=serializeProject(p);
-  assert.equal(JSON.parse(text).version,2);
+  assert.equal(JSON.parse(text).version,3);
   assert.deepEqual(parseProjectFile(text),p);
   for (const version of [1,3]) assert.throws(()=>parseProjectFile(JSON.stringify({format:'dekiru-game-creator',version,project:p})));
   for (const location of ['project','settings','question']) {
