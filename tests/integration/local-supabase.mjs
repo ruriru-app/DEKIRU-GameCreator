@@ -30,6 +30,11 @@ export async function createLocalTestClients() {
     return {...rpcClient(signed.data.access_token),id};
   }
   const admin={
+    setSharedImageWrites(enabled){
+      if(typeof enabled!=='boolean')throw Error('Boolean flag required');
+      execFileSync('docker',['exec','supabase_db_dekiru-gamecreator-test','psql','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',
+        'update private.service_control set shared_question_images_enabled='+enabled+' where id;'],{stdio:['ignore','pipe','pipe']});
+    },
     setImageWrites(enabled){
       if(typeof enabled!=='boolean')throw Error('Boolean flag required');
       execFileSync('docker',['exec','supabase_db_dekiru-gamecreator-test','psql','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',

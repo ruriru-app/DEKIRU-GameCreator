@@ -10,7 +10,14 @@ import {createProjectStore} from '../Typing/creator/creator-state.js';
 import {createCloudState} from '../core/cloud/cloud-state.js';
 import {resolveRuntime} from '../p/runtime-registry.js';
 import {imageProject,imageAtBytes} from './fixtures/question-images.mjs';
+import {sharedProject,sharedProjectBytes,sharedTextBytes} from './fixtures/shared-image-projects.mjs';
 const meta={id:'g',version:1,publication:null,publicationDirty:false};
+test('compact format keeps exact total, text, count and image-size limits',()=>{
+  const cases=[[sharedProjectBytes(2097152),true],[sharedProjectBytes(2097153),false],[sharedTextBytes(262144),true],[sharedTextBytes(262145),false],
+    [sharedProject(undefined,200),true],[sharedProject(undefined,201),false],[sharedProject(imageAtBytes(131072)),true],[sharedProject(imageAtBytes(131073)),false]];
+  for(const [p,expected]of cases)assert.equal(validateCloudProject(p).ok,expected);
+  assert.equal(Buffer.byteLength(serializeCloudProject(cases[0][0])),2097152);
+});
 function repeated(){const p=imageProject(imageAtBytes(100000));p.questions=Array.from({length:25},(_,i)=>({...p.questions[0],id:'q'+i}));return p;}
 test('new wire format is validated without expanding public responses',async()=>{
   const p=packProjectImages(repeated()),envelope={schemaVersion:1,project:p,runtimeVersion:'fusuma-3',publicationVersion:1};

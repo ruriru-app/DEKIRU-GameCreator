@@ -6,12 +6,50 @@ import {projectWith,projectBytes} from '../fixtures/cloud-projects.mjs';
 import {serializeCloudProject,validateCloudProject} from '../../core/cloud/project-validation.js';
 import {imageProject,pngImage,imageAtBytes,zeroComponentJpeg,invalidJpegScans} from '../fixtures/question-images.mjs';
 import {imageProjectBytes,imageTextBytes} from '../fixtures/cloud-image-projects.mjs';
+import {sharedProject,sharedProjectBytes,sharedTextBytes} from '../fixtures/shared-image-projects.mjs';
 const args=(gameId=null,expectedVersion=0,project=projectWith())=>({requestId:randomUUID(),gameId,expectedVersion,projectText:serializeCloudProject(project)});
 async function call(client,command,value) {
   const result=await client.rpc('mutate_game',{p_command:command,p_args:value});
   assert.equal(result.error,null,'RPC HTTP request should succeed');
   return result.data;
 }
+test('compact image boundaries and invalid pools agree across JS and SQL',async t=>{
+  const {ownerA:a,admin,cleanup}=await createLocalTestClients();t.after(cleanup);
+  admin.setImageWrites(true);admin.setSharedImageWrites(true);t.after(()=>{admin.setImageWrites(false);admin.setSharedImageWrites(false);});
+  const cases=[sharedProject(),sharedProjectBytes(2097152),sharedProjectBytes(2097153),sharedTextBytes(262144),sharedTextBytes(262145),
+    sharedProject(undefined,200),sharedProject(undefined,201),sharedProject(imageAtBytes(131072)),sharedProject(imageAtBytes(131073))];
+  for(const change of [p=>p.questions[0].image.imageId='img99',p=>p.images.push({...p.images[0]}),p=>p.images.push({...p.images[0],id:'img2'}),p=>p.images[0].width=2,p=>p.questions[0].image.alt='😀'.repeat(101),p=>p.images[0].id='img01']){const p=sharedProject();change(p);cases.push(p);}
+  for(const p of cases){
+    const expected=validateCloudProject(p),text=serializeCloudProject(p),db=admin.validateProject(text);
+    assert.equal(db.canonical,text,'canonical compact bytes match');assert.equal(db.validation.ok,expected.ok);
+    if(!expected.ok)assert.equal(db.validation.error.code,expected.error.code);
+    const actual=await call(a,'save',args(null,0,p));assert.equal(actual.ok,expected.ok);
+    if(!expected.ok)assert.equal(actual.error.code,expected.error.code);
+  }
+});
+test('compact writes require both gates; read, retry, ownership and snapshot semantics survive',async t=>{
+  const {ownerA:a,ownerB:b,admin,cleanup}=await createLocalTestClients();t.after(cleanup);t.after(()=>{admin.setImageWrites(false);admin.setSharedImageWrites(false);});
+  admin.setImageWrites(true);admin.setSharedImageWrites(false);
+  assert.equal((await call(a,'save',args(null,0,sharedProject()))).error.code,'SERVICE_UNAVAILABLE');
+  admin.setSharedImageWrites(true);admin.setImageWrites(false);
+  assert.equal((await call(a,'save',args(null,0,sharedProject()))).error.code,'SERVICE_UNAVAILABLE');admin.setImageWrites(true);
+  const request=args(null,0,sharedProject()),created=await call(a,'save',request);assert.equal(created.ok,true);
+  assert.deepEqual(await call(a,'save',request),created);let game=created.data;
+  assert.equal((await b.rpc('load_game',{p_game_id:game.id})).data.error.code,'UNAVAILABLE');
+  const mutate=async command=>{const result=await call(a,command,{gameId:game.id,expectedVersion:game.version,requestId:randomUUID()});if(result.ok)game=result.data;return result;};
+  assert.equal((await mutate('publish')).ok,true);const share=game.publication.shareId;assert.equal(game.publication.runtimeVersion,'fusuma-3');
+  const draft=sharedProject();draft.questions[0].image.placement='right';game=(await call(a,'save',args(game.id,game.version,draft))).data;
+  assert.equal((await admin.readShared(share)).data.project.questions[0].image.placement,'top');
+  assert.equal((await mutate('publish')).ok,true);assert.equal(game.publication.shareId,share);
+  admin.setSharedImageWrites(false);
+  assert.equal((await a.rpc('load_game',{p_game_id:game.id})).data.ok,true);
+  assert.equal((await admin.readShared(share)).data.project.schemaVersion,3);
+  assert.equal((await mutate('publish')).error.code,'SERVICE_UNAVAILABLE');
+  assert.equal((await mutate('unpublish')).ok,true);assert.equal((await admin.readShared(share)).data,null);
+  assert.equal((await mutate('republish')).error.code,'SERVICE_UNAVAILABLE');
+  admin.setSharedImageWrites(true);assert.equal((await mutate('republish')).ok,true);assert.equal(game.publication.shareId,share);
+  assert.equal((await admin.readShared(share)).data.project.questions[0].image.placement,'right');
+});
 test('real JWTs enforce ownership, atomic quotas, version conflicts and lost-response retries',async t=>{
   const {ownerA:a,ownerB:b,anon,admin,cleanup}=await createLocalTestClients();t.after(cleanup);
   assert.notEqual((await anon.rpc('list_games')).error,null,'anonymous cannot invoke owner RPC');

@@ -138,21 +138,64 @@
   var QUESTION_IMAGE_LIMITS = Object.freeze({ bytes: 131072, side: 1280, alt: 200, sourceBytes: 10485760, sourceSide: 8192, sourcePixels: 25e6 });
   var IMAGE_PLACEMENTS = Object.freeze(["top", "bottom", "left", "right"]);
   function normalizeQuestionImage(value) {
-    const bad = () => {
+    const bad2 = () => {
       throw new Error("\u554F\u984C\u306E\u753B\u50CF\u304C\u6B63\u3057\u304F\u3042\u308A\u307E\u305B\u3093\u3002JPEG/PNG\u30FB\u9577\u8FBA1280px\u30FB128 KiB\u4EE5\u4E0B\u306E\u753B\u50CF\u306B\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
     };
-    if (!value || typeof value !== "object" || Array.isArray(value)) bad();
-    const keys = ["dataUrl", "width", "height", "placement", "alt"];
-    if (Object.keys(value).length !== 5 || keys.some((k) => !Object.hasOwn(value, k))) bad();
+    if (!value || typeof value !== "object" || Array.isArray(value)) bad2();
+    const keys2 = ["dataUrl", "width", "height", "placement", "alt"];
+    if (Object.keys(value).length !== 5 || keys2.some((k) => !Object.hasOwn(value, k))) bad2();
     const { dataUrl, width, height, placement, alt } = value;
-    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || Math.max(width, height) > 1280 || !IMAGE_PLACEMENTS.includes(placement) || typeof alt !== "string" || alt.length > 200 || alt.includes("\0") || !alt.isWellFormed() || typeof dataUrl !== "string" || dataUrl.length > 175e3) bad();
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || Math.max(width, height) > 1280 || !IMAGE_PLACEMENTS.includes(placement) || typeof alt !== "string" || alt.length > 200 || alt.includes("\0") || !alt.isWellFormed() || typeof dataUrl !== "string" || dataUrl.length > 175e3) bad2();
     const match = /^data:(image\/(?:jpeg|png));base64,((?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)$/.exec(dataUrl);
-    if (!match || !match[2]) bad();
+    if (!match || !match[2]) bad2();
     const binary = atob(match[2]);
-    if (binary.length > 131072 || btoa(binary) !== match[2]) bad();
+    if (binary.length > 131072 || btoa(binary) !== match[2]) bad2();
     const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0)), info = readImageInfo(bytes);
-    if (info.mime !== match[1] || info.width !== width || info.height !== height) bad();
+    if (info.mime !== match[1] || info.width !== width || info.height !== height) bad2();
     return { dataUrl, width, height, placement, alt };
+  }
+
+  // core/project-image-pool.js
+  var MAX_EXPANDED_BYTES = 36 * 1024 * 1024;
+  var record = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  var keys = (v, list) => record(v) && Object.keys(v).every((k) => list.includes(k));
+  var bad = () => {
+    throw Error("\u554F\u984C\u753B\u50CF\u306E\u5171\u6709\u30C7\u30FC\u30BF\u304C\u6B63\u3057\u304F\u306A\u3044\u304B\u3001\u5BB9\u91CF\u4E0A\u9650\u3092\u8D85\u3048\u3066\u3044\u307E\u3059\u3002");
+  };
+  var size = (v) => new TextEncoder().encode(JSON.stringify(v)).byteLength;
+  function unpackProjectImages(project) {
+    if (project?.schemaVersion !== 3) return project;
+    if (!keys(project, ["schemaVersion", "title", "gameType", "templateId", "settings", "questions", "images"]) || !Array.isArray(project.images) || !project.images.length || project.images.length > 200 || !Array.isArray(project.questions) || project.questions.length > 200) bad();
+    const assets = /* @__PURE__ */ new Map(), dataUrls = /* @__PURE__ */ new Set(), used = /* @__PURE__ */ new Set();
+    for (const a of project.images) {
+      if (!keys(a, ["id", "dataUrl", "width", "height"]) || typeof a.id !== "string" || !/^img[1-9][0-9]{0,2}$/.test(a.id) || Number(a.id.slice(3)) > 200 || assets.has(a.id) || dataUrls.has(a.dataUrl)) bad();
+      const checked = normalizeQuestionImage({ dataUrl: a.dataUrl, width: a.width, height: a.height, placement: "top", alt: "" });
+      assets.set(a.id, checked);
+      dataUrls.add(a.dataUrl);
+    }
+    let bytes = 256;
+    for (const k of ["title", "gameType", "templateId"]) {
+      if (typeof project[k] !== "string" || project[k].length > MAX_EXPANDED_BYTES) bad();
+      bytes += size(project[k]);
+    }
+    for (const q of project.questions) {
+      if (!keys(q, ["id", "prompt", "displayAnswer", "reading", "romajiHint", "image"])) bad();
+      bytes += 128;
+      for (const k of ["id", "prompt", "displayAnswer", "reading", "romajiHint"]) {
+        if (typeof q[k] !== "string" || q[k].length > MAX_EXPANDED_BYTES) bad();
+        bytes += size(q[k]);
+      }
+      if (Object.hasOwn(q, "image")) {
+        const ref = q.image;
+        if (!keys(ref, ["imageId", "placement", "alt"]) || !assets.has(ref.imageId) || !IMAGE_PLACEMENTS.includes(ref.placement) || typeof ref.alt !== "string" || ref.alt.length > 200 || ref.alt.includes("\0") || !ref.alt.isWellFormed()) bad();
+        used.add(ref.imageId);
+        bytes += size({ ...assets.get(ref.imageId), placement: ref.placement, alt: ref.alt });
+      }
+      if (bytes > MAX_EXPANDED_BYTES) bad();
+    }
+    if (bytes > MAX_EXPANDED_BYTES || used.size !== assets.size) bad();
+    const { images, ...rest } = project;
+    return { ...rest, schemaVersion: 2, questions: project.questions.map((q) => q.image ? { ...q, image: { ...assets.get(q.image.imageId), placement: q.image.placement, alt: q.image.alt } } : { ...q }) };
   }
 
   // core/cloud/project-validation.js
@@ -167,8 +210,8 @@
     romajiHint: 800,
     id: 128
   });
-  var record = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-  var keysMatch = (v, keys) => record(v) && Object.keys(v).length === keys.length && keys.every((k) => Object.hasOwn(v, k));
+  var record2 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  var keysMatch = (v, keys2) => record2(v) && Object.keys(v).length === keys2.length && keys2.every((k) => Object.hasOwn(v, k));
   var validText = (v) => typeof v === "string" && !v.includes("\0") && v.isWellFormed();
   function serializeCloudProject(p, { withoutImages = false } = {}) {
     return JSON.stringify({
@@ -183,19 +226,26 @@
         displayAnswer: q.displayAnswer,
         reading: q.reading,
         romajiHint: q.romajiHint,
-        ...!withoutImages && Object.hasOwn(q, "image") ? { image: { dataUrl: q.image?.dataUrl, width: q.image?.width, height: q.image?.height, placement: q.image?.placement, alt: q.image?.alt } } : {}
-      }))
+        ...!withoutImages && Object.hasOwn(q, "image") ? { image: p.schemaVersion === 3 ? { imageId: q.image?.imageId, placement: q.image?.placement, alt: q.image?.alt } : { dataUrl: q.image?.dataUrl, width: q.image?.width, height: q.image?.height, placement: q.image?.placement, alt: q.image?.alt } } : {}
+      })),
+      ...!withoutImages && p.schemaVersion === 3 ? { images: p.images.map((a) => ({ id: a.id, dataUrl: a.dataUrl, width: a.width, height: a.height })) } : {}
     });
   }
   function validateCloudProject(p, { mode = "draft" } = {}) {
-    if (!["draft", "publish"].includes(mode) || !keysMatch(p, ["schemaVersion", "title", "gameType", "templateId", "settings", "questions"]) || ![1, 2].includes(p.schemaVersion) || p.gameType !== "typing" || p.templateId !== "fusuma" || !validText(p.title) || !Array.isArray(p.questions) || !keysMatch(p.settings, ["volume", "muted"]) || !Number.isFinite(p.settings.volume) || p.settings.volume < 0 || p.settings.volume > 1 || typeof p.settings.muted !== "boolean") return failure("VALIDATION");
+    if (!["draft", "publish"].includes(mode) || !keysMatch(p, ["schemaVersion", "title", "gameType", "templateId", "settings", "questions", ...p?.schemaVersion === 3 ? ["images"] : []]) || ![1, 2, 3].includes(p.schemaVersion) || p.gameType !== "typing" || p.templateId !== "fusuma" || !validText(p.title) || !Array.isArray(p.questions) || !keysMatch(p.settings, ["volume", "muted"]) || !Number.isFinite(p.settings.volume) || p.settings.volume < 0 || p.settings.volume > 1 || typeof p.settings.muted !== "boolean") return failure("VALIDATION");
     if ([...p.title].length > CLOUD_LIMITS.title || p.questions.length > CLOUD_LIMITS.questions) return failure("LIMIT");
     if (mode === "publish" && (!p.title.trim() || p.questions.length === 0)) return failure("VALIDATION", "\u516C\u958B\u306B\u306F\u30BB\u30C3\u30C8\u540D\u30681\u554F\u4EE5\u4E0A\u306E\u554F\u984C\u304C\u5FC5\u8981\u3067\u3059\u3002");
+    let expanded;
+    try {
+      expanded = unpackProjectImages(p);
+    } catch {
+      return failure("VALIDATION");
+    }
     const ids = /* @__PURE__ */ new Set();
-    for (const [index, q] of p.questions.entries()) {
-      const image = record(q) && Object.hasOwn(q, "image");
-      if (!keysMatch(q, ["id", "prompt", "displayAnswer", "reading", "romajiHint", ...image && p.schemaVersion === 2 ? ["image"] : []]) || ["id", "prompt", "displayAnswer", "reading", "romajiHint"].some((k) => !validText(q[k])) || !/^[A-Za-z0-9_-]{1,128}$/.test(q.id) || ids.has(q.id)) return failure("VALIDATION", index + 1 + "\u554F\u76EE\u306E\u5F62\u5F0F\u307E\u305F\u306FID\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
-      if (image) {
+    for (const [index, q] of expanded.questions.entries()) {
+      const image = record2(q) && Object.hasOwn(q, "image");
+      if (!keysMatch(q, ["id", "prompt", "displayAnswer", "reading", "romajiHint", ...image && expanded.schemaVersion === 2 ? ["image"] : []]) || ["id", "prompt", "displayAnswer", "reading", "romajiHint"].some((k) => !validText(q[k])) || !/^[A-Za-z0-9_-]{1,128}$/.test(q.id) || ids.has(q.id)) return failure("VALIDATION", index + 1 + "\u554F\u76EE\u306E\u5F62\u5F0F\u307E\u305F\u306FID\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
+      if (image && p.schemaVersion !== 3) {
         try {
           normalizeQuestionImage(q.image);
         } catch {
@@ -210,7 +260,7 @@
     }
     const serialized = serializeCloudProject(p);
     const bytes = (text) => new TextEncoder().encode(text).byteLength;
-    if (bytes(serializeCloudProject(p, { withoutImages: true })) > CLOUD_LIMITS.bytes || bytes(serialized) > (p.schemaVersion === 2 ? CLOUD_LIMITS.imageProjectBytes : CLOUD_LIMITS.bytes)) return failure("LIMIT", "\u30AA\u30F3\u30E9\u30A4\u30F3\u4FDD\u5B58\u306F\u6587\u7AE0256 KiB\u3001\u753B\u50CF\u3092\u542B\u3080\u5168\u4F532 MiB\u4EE5\u4E0B\u3067\u3059\u3002\u753B\u50CF\u3092\u6E1B\u3089\u3059\u304B\u3001\u7AEF\u672B\u3078\u306E\u4FDD\u5B58\u3092\u3054\u5229\u7528\u304F\u3060\u3055\u3044\u3002");
+    if (bytes(serializeCloudProject(p, { withoutImages: true })) > CLOUD_LIMITS.bytes || bytes(serialized) > (p.schemaVersion >= 2 ? CLOUD_LIMITS.imageProjectBytes : CLOUD_LIMITS.bytes)) return failure("LIMIT", "\u30AA\u30F3\u30E9\u30A4\u30F3\u4FDD\u5B58\u306F\u6587\u7AE0256 KiB\u3001\u753B\u50CF\u3092\u542B\u3080\u5168\u4F532 MiB\u4EE5\u4E0B\u3067\u3059\u3002\u753B\u50CF\u3092\u6E1B\u3089\u3059\u304B\u3001\u7AEF\u672B\u3078\u306E\u4FDD\u5B58\u3092\u3054\u5229\u7528\u304F\u3060\u3055\u3044\u3002");
     return ok(JSON.parse(serialized));
   }
 
@@ -229,7 +279,7 @@
 
   // core/cloud/public-api.js
   function checkedPublicGame(value) {
-    const runtime = value?.project?.schemaVersion === 1 ? "fusuma-1" : value?.project?.schemaVersion === 2 ? "fusuma-2" : null;
+    const runtime = { 1: "fusuma-1", 2: "fusuma-2", 3: "fusuma-3" }[value?.project?.schemaVersion];
     if (value?.schemaVersion !== 1 || !runtime || value.runtimeVersion !== runtime || !Number.isSafeInteger(value.publicationVersion) || value.publicationVersion < 1) return failure("SERVICE_UNAVAILABLE");
     const validated = validateCloudProject(value.project, { mode: "publish" });
     return validated.ok ? ok({
