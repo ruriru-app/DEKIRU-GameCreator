@@ -24,7 +24,8 @@ create or replace function private.project_text(p jsonb) returns text language s
 $$;
 
 create or replace function private.validate_project(project_text text, mode text) returns jsonb language plpgsql immutable set search_path='' as $$
-declare p jsonb; q jsonb; field text; ids text[]='{}'; max_chars int; text_only jsonb; a jsonb; img jsonb; image_ids text[]='{}'; image_sources text[]='{}'; used_ids text[]='{}'; is_pool boolean;
+declare p jsonb; q jsonb; field text; ids text[]='{}'; max_chars int; text_only jsonb; a jsonb; img jsonb;
+  image_ids text[]='{}'; image_sources text[]='{}'; used_ids text[]='{}'; is_pool boolean;
 begin
   if mode not in ('draft','publish') or mode is null or project_text is null then return private.fail('VALIDATION'); end if;
   if octet_length(project_text)>4194304 then return private.fail('LIMIT'); end if;
@@ -45,7 +46,13 @@ begin
     for a in select value from jsonb_array_elements(p->'images') loop
       if jsonb_typeof(a) is distinct from 'object' or a-array['id','dataUrl','width','height']<>'{}'::jsonb or
         not(a ?& array['id','dataUrl','width','height']) or jsonb_typeof(a->'id') is distinct from 'string' or
-        (a->>'id') !~ '^img[1-9][0-9]{0,2} from jsonb_array_elements(p->'questions') loop
+        (a->>'id') !~ '^img[1-9][0-9]{0,2}$' then return private.fail('VALIDATION'); end if;
+      if substring(a->>'id' from 4)::int>200 or a->>'id'=any(image_ids) or a->>'dataUrl'=any(image_sources) then return private.fail('VALIDATION'); end if;
+      if not private.validate_question_image((a-'id')||'{"placement":"top","alt":""}'::jsonb) then return private.fail('VALIDATION'); end if;
+      image_ids:=array_append(image_ids,a->>'id'); image_sources:=array_append(image_sources,a->>'dataUrl');
+    end loop;
+  end if;
+  for q in select value from jsonb_array_elements(p->'questions') loop
     if jsonb_typeof(q)<>'object' or q-(case when p->'schemaVersion' in ('2'::jsonb,'3'::jsonb) then array['id','prompt','displayAnswer','reading','romajiHint','image'] else array['id','prompt','displayAnswer','reading','romajiHint'] end)<>'{}'::jsonb or
       jsonb_typeof(q->'id') is distinct from 'string' or not ((q->>'id') ~ '^[A-Za-z0-9_-]{1,128}$') or q->>'id'=any(ids)
       then return private.fail('VALIDATION'); end if;
@@ -74,33 +81,6 @@ begin
   text_only:=jsonb_set(p-'images','{questions}',coalesce((select jsonb_agg(qvalue-'image' order by n) from jsonb_array_elements(p->'questions') with ordinality e(qvalue,n)),'[]'::jsonb));
   if octet_length(private.project_text(text_only))>262144 or
     octet_length(private.project_text(p))>(case when p->'schemaVersion' in ('2'::jsonb,'3'::jsonb) then 2097152 else 262144 end) then return private.fail('LIMIT'); end if;
-  return private.success(p);
-exception when others then return private.fail('VALIDATION');
-end;
-$$;
-
- then return private.fail('VALIDATION'); end if;
-      if substring(a->>'id' from 4)::int>200 or a->>'id'=any(image_ids) or a->>'dataUrl'=any(image_sources) then return private.fail('VALIDATION'); end if;
-      if not private.validate_question_image((a-'id')||'{"placement":"top","alt":""}'::jsonb) then return private.fail('VALIDATION'); end if;
-      image_ids:=array_append(image_ids,a->>'id'); image_sources:=array_append(image_sources,a->>'dataUrl');
-    end loop;
-  end if;
-  for q in select value from jsonb_array_elements(p->'questions') loop
-    if jsonb_typeof(q)<>'object' or q-(case when p->'schemaVersion'='2'::jsonb then array['id','prompt','displayAnswer','reading','romajiHint','image'] else array['id','prompt','displayAnswer','reading','romajiHint'] end)<>'{}'::jsonb or
-      jsonb_typeof(q->'id') is distinct from 'string' or not ((q->>'id') ~ '^[A-Za-z0-9_-]{1,128}$') or q->>'id'=any(ids)
-      then return private.fail('VALIDATION'); end if;
-    if q ? 'image' and not private.validate_question_image(q->'image') then return private.fail('VALIDATION'); end if;
-    ids:=array_append(ids,q->>'id');
-    foreach field in array array['prompt','displayAnswer','reading','romajiHint'] loop
-      if jsonb_typeof(q->field) is distinct from 'string' then return private.fail('VALIDATION'); end if;
-      max_chars:=case field when 'prompt' then 1000 when 'romajiHint' then 800 else 200 end;
-      if char_length(q->>field)>max_chars then return private.fail('LIMIT'); end if;
-      if mode='publish' and field<>'romajiHint' and not private.nonblank(q->>field) then return private.fail('VALIDATION'); end if;
-    end loop;
-  end loop;
-  text_only:=jsonb_set(p,'{questions}',coalesce((select jsonb_agg(qvalue-'image' order by n) from jsonb_array_elements(p->'questions') with ordinality e(qvalue,n)),'[]'::jsonb));
-  if octet_length(private.project_text(text_only))>262144 or
-    octet_length(private.project_text(p))>(case when p->'schemaVersion'='2'::jsonb then 2097152 else 262144 end) then return private.fail('LIMIT'); end if;
   return private.success(p);
 exception when others then return private.fail('VALIDATION');
 end;
@@ -197,4 +177,3 @@ $$;
 
 -- Existing RPC ACLs and security-definer ownership are preserved by CREATE OR REPLACE.
 commit;
-
