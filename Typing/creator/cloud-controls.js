@@ -1,12 +1,12 @@
 import {ok,failure} from '../../core/cloud/contracts.js';
-import {validateCloudProject,serializeCloudProject} from '../../core/cloud/project-validation.js';
+import {prepareCloudProject,serializeCloudProject} from '../../core/cloud/project-validation.js';
 import {publicConfig} from '../../core/cloud/config.js';
 import {saveAuthResume,takeAuthResume,clearAuthResume} from '../../core/cloud/auth-resume.js';
 import {buildShareUrl} from '../../core/cloud/share-url.js';
 import {downloadProject} from './project-file.js';
 
 const same=(a,b)=>serializeCloudProject(a)===serializeCloudProject(b);
-export function createCloudEditor({store,cloudState,api,canCommit=()=>true,questionImagesEnabled=()=>false}) {
+export function createCloudEditor({store,cloudState,api,canCommit=()=>true,questionImagesEnabled=()=>false,sharedImagesEnabled=()=>false}) {
   let user=null,epoch=0,busy=false,pending=null,savedRecord=null,conflict=false;
   const listeners=new Set();
   function getState(){return {user:user?{...user}:null,busy,conflict,canRetry:Boolean(pending),...cloudState.getState()};}
@@ -39,16 +39,16 @@ export function createCloudEditor({store,cloudState,api,canCommit=()=>true,quest
   }
   async function save({copy=false}={}) {
     const error=gate();if(error) return error;
-    const snapshot=store.getSnapshot(),checked=validateCloudProject(snapshot,{mode:'draft'});
+    const snapshot=store.getSnapshot(),useSharedImages=sharedImagesEnabled()===true,checked=prepareCloudProject(snapshot,{mode:'draft',sharedImagesEnabled:useSharedImages});
     if(imageGate(snapshot))return imageGate(snapshot);
     if(!checked.ok) return checked;
     const meta=copy?null:cloudState.getState().gameMeta,requestId=crypto.randomUUID();
     cloudState.beginSave({ownerId:user.id,requestId,snapshot});
-    return execute({method:'saveDraft',args:{gameId:meta?.id??null,expectedVersion:meta?.version??0,project:snapshot,requestId}});
+    return execute({method:'saveDraft',args:{gameId:meta?.id??null,expectedVersion:meta?.version??0,project:snapshot,useSharedImages,requestId}});
   }
   async function publish() {
     const error=gate();if(error) return error;
-    const confirmed=store.getSnapshot(),checked=validateCloudProject(confirmed,{mode:'publish'}),ticket=epoch;
+    const confirmed=store.getSnapshot(),checked=prepareCloudProject(confirmed,{mode:'publish',sharedImagesEnabled:sharedImagesEnabled()===true}),ticket=epoch;
     if(imageGate(confirmed))return imageGate(confirmed);
     if(!checked.ok) return checked;
     if(!cloudState.isCloudSaved(confirmed)) {

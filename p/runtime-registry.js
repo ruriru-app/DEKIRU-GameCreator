@@ -1,12 +1,14 @@
+import {normalizeProjectData} from '../core/project-format.js';
 /** Never import a path supplied by a saved project or an HTTP response. */
 export async function resolveRuntime(version) {
-  if(!['fusuma-1','fusuma-2'].includes(version))throw new Error('Unsupported game runtime');
+  if(!['fusuma-1','fusuma-2','fusuma-3'].includes(version))throw new Error('Unsupported game runtime');
   const [template,audio,converter,engine,controller,renderer]=await Promise.all([
     import('../Typing/templates/fusuma/manifest.js'),import('../core/audio-manager.js'),
     import('../Typing/core/romaji-converter.js'),import('../Typing/core/typing-engine.js'),
     import('../Typing/templates/fusuma/event-controller.js'),import('../Typing/templates/fusuma/renderer.js'),
   ]);
   return{manifest:template.fusumaManifest,mount({host,project}){
+    project=normalizeProjectData(project);
     const audioManager=audio.createAudioManager();
     try{
       const game=renderer.mountFusumaGame({host,project,manifest:template.fusumaManifest,audioManager,

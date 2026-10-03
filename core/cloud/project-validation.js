@@ -1,5 +1,6 @@
 import { ok, failure } from './contracts.js';
 import {normalizeQuestionImage} from '../question-image.js';
+import {packProjectImages,unpackProjectImages} from '../project-image-pool.js';
 
 export const CLOUD_LIMITS = Object.freeze({
   questions:200, bytes:262144, imageProjectBytes:2097152, title:80, prompt:1000, displayAnswer:200, reading:200, romajiHint:800, id:128,
@@ -12,24 +13,27 @@ export function serializeCloudProject(p, {withoutImages=false}={}) {
     schemaVersion:p.schemaVersion, title:p.title, gameType:p.gameType, templateId:p.templateId,
     settings:{volume:p.settings.volume,muted:p.settings.muted},
     questions:p.questions.map(q => ({id:q.id,prompt:q.prompt,displayAnswer:q.displayAnswer,reading:q.reading,romajiHint:q.romajiHint,
-      ...(!withoutImages&&Object.hasOwn(q,'image')?{image:{dataUrl:q.image?.dataUrl,width:q.image?.width,height:q.image?.height,placement:q.image?.placement,alt:q.image?.alt}}:{})})),
+      ...(!withoutImages&&Object.hasOwn(q,'image')?{image:p.schemaVersion===3?{imageId:q.image?.imageId,placement:q.image?.placement,alt:q.image?.alt}:{dataUrl:q.image?.dataUrl,width:q.image?.width,height:q.image?.height,placement:q.image?.placement,alt:q.image?.alt}}:{})})),
+    ...(!withoutImages&&p.schemaVersion===3?{images:p.images.map(a=>({id:a.id,dataUrl:a.dataUrl,width:a.width,height:a.height}))}:{}),
   });
 }
 export function validateCloudProject(p, {mode = 'draft'} = {}) {
   if (!['draft','publish'].includes(mode) ||
-      !keysMatch(p,['schemaVersion','title','gameType','templateId','settings','questions']) ||
-      ![1,2].includes(p.schemaVersion) || p.gameType !== 'typing' || p.templateId !== 'fusuma' ||
+      !keysMatch(p,['schemaVersion','title','gameType','templateId','settings','questions',...(p?.schemaVersion===3?['images']:[])]) ||
+      ![1,2,3].includes(p.schemaVersion) || p.gameType !== 'typing' || p.templateId !== 'fusuma' ||
       !validText(p.title) || !Array.isArray(p.questions) ||
       !keysMatch(p.settings,['volume','muted']) || !Number.isFinite(p.settings.volume) ||
       p.settings.volume < 0 || p.settings.volume > 1 || typeof p.settings.muted !== 'boolean') return failure('VALIDATION');
   if ([...p.title].length > CLOUD_LIMITS.title || p.questions.length > CLOUD_LIMITS.questions) return failure('LIMIT');
   if (mode === 'publish' && (!p.title.trim() || p.questions.length === 0)) return failure('VALIDATION','公開にはセット名と1問以上の問題が必要です。');
+  let expanded;
+  try{expanded=unpackProjectImages(p);}catch{return failure('VALIDATION');}
   const ids = new Set();
-  for (const [index,q] of p.questions.entries()) {
+  for (const [index,q] of expanded.questions.entries()) {
     const image=record(q)&&Object.hasOwn(q,'image');
-    if (!keysMatch(q,['id','prompt','displayAnswer','reading','romajiHint',...(image&&p.schemaVersion===2?['image']:[])]) ||
+    if (!keysMatch(q,['id','prompt','displayAnswer','reading','romajiHint',...(image&&expanded.schemaVersion===2?['image']:[])]) ||
         ['id','prompt','displayAnswer','reading','romajiHint'].some(k => !validText(q[k])) || !/^[A-Za-z0-9_-]{1,128}$/.test(q.id) || ids.has(q.id)) return failure('VALIDATION', (index+1)+'問目の形式またはIDを確認してください。');
-    if(image){try{normalizeQuestionImage(q.image);}catch{return failure('VALIDATION',(index+1)+'問目の画像を確認してください。');}}
+    if(image&&p.schemaVersion!==3){try{normalizeQuestionImage(q.image);}catch{return failure('VALIDATION',(index+1)+'問目の画像を確認してください。');}}
     ids.add(q.id);
     for (const key of ['prompt','displayAnswer','reading','romajiHint']) {
       if ([...q[key]].length > CLOUD_LIMITS[key]) return failure('LIMIT',(index+1)+'問目の文字数が上限を超えています。');
@@ -39,6 +43,11 @@ export function validateCloudProject(p, {mode = 'draft'} = {}) {
   const serialized = serializeCloudProject(p);
   const bytes=text=>new TextEncoder().encode(text).byteLength;
   if (bytes(serializeCloudProject(p,{withoutImages:true})) > CLOUD_LIMITS.bytes ||
-      bytes(serialized) > (p.schemaVersion===2?CLOUD_LIMITS.imageProjectBytes:CLOUD_LIMITS.bytes)) return failure('LIMIT','オンライン保存は文章256 KiB、画像を含む全体2 MiB以下です。画像を減らすか、端末への保存をご利用ください。');
+      bytes(serialized) > (p.schemaVersion>=2?CLOUD_LIMITS.imageProjectBytes:CLOUD_LIMITS.bytes)) return failure('LIMIT','オンライン保存は文章256 KiB、画像を含む全体2 MiB以下です。画像を減らすか、端末への保存をご利用ください。');
   return ok(JSON.parse(serialized));
+}
+
+export function prepareCloudProject(project,{mode='draft',sharedImagesEnabled=false}={}) {
+  try{return validateCloudProject(sharedImagesEnabled?packProjectImages(project):project,{mode});}
+  catch{return failure('VALIDATION');}
 }

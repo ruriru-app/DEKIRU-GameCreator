@@ -3,7 +3,7 @@ import { validateCloudProject } from './project-validation.js';
 import { SHARE_ID_PATTERN } from './share-url.js';
 
 export function checkedPublicGame(value) {
-  const runtime=value?.project?.schemaVersion===1?'fusuma-1':value?.project?.schemaVersion===2?'fusuma-2':null;
+  const runtime=({1:'fusuma-1',2:'fusuma-2',3:'fusuma-3'})[value?.project?.schemaVersion];
   if (value?.schemaVersion !== 1 || !runtime || value.runtimeVersion !== runtime ||
       !Number.isSafeInteger(value.publicationVersion) || value.publicationVersion < 1) return failure('SERVICE_UNAVAILABLE');
   const validated=validateCloudProject(value.project,{mode:'publish'});

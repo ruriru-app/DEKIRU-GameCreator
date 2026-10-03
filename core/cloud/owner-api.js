@@ -1,5 +1,6 @@
 import { failure, ERROR_MESSAGES } from './contracts.js';
-import { validateCloudProject, serializeCloudProject } from './project-validation.js';
+import { validateCloudProject, prepareCloudProject, serializeCloudProject } from './project-validation.js';
+import {normalizeProjectData} from '../project-format.js';
 
 export function createOwnerApi({client}) {
   async function rpc(name,args) {
@@ -30,10 +31,16 @@ export function createOwnerApi({client}) {
   return {
     getContext:()=>rpc('creator_context'),
     listGames:()=>rpc('list_games'),
-    loadGame:id=>rpc('load_game',{p_game_id:id}),
+    loadGame:async id=>{
+      const result=await rpc('load_game',{p_game_id:id});if(!result.ok)return result;
+      const checked=validateCloudProject(result.data?.project);
+      if(!checked.ok)return failure('SERVICE_UNAVAILABLE');
+      try{return {ok:true,data:{...result.data,project:normalizeProjectData(checked.data)}};}
+      catch{return failure('SERVICE_UNAVAILABLE');}
+    },
     saveDraft:args=>{
-      const result=validateCloudProject(args.project,{mode:'draft'});
-      return result.ok ? mutate('save',args) : Promise.resolve(result);
+      const result=prepareCloudProject(args.project,{mode:'draft',sharedImagesEnabled:args.useSharedImages===true});
+      return result.ok ? mutate('save',{...args,project:result.data}) : Promise.resolve(result);
     },
     publishGame:args=>mutate('publish',args),
     setPublished:args=>mutate(args.published ? 'republish' : 'unpublish',args),
