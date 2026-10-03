@@ -1,0 +1,50 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><title>Shared image storage tests</title>
+<h1>画像の重複保存・互換性</h1><ol id="results"></ol><section id="controls"></section>
+<script type="module">
+import {mountCloudControls} from '../Typing/creator/cloud-controls.js';
+import {createCloudState} from '../core/cloud/cloud-state.js';
+import {createProjectStore} from '../Typing/creator/creator-state.js';
+import {createOwnerApi} from '../core/cloud/owner-api.js';
+import {serializeCloudProject} from '../core/cloud/project-validation.js';
+import {serializeProject,parseProjectFile} from '../Typing/creator/project-file.js';
+import {imageProject,imageAtBytes} from './fixtures/question-images.mjs';
+import {memoryStorage} from './fixtures/memory-storage.mjs';
+import {ok,failure} from '../core/cloud/contracts.js';
+import {buildStandaloneHtml,loadTemplateBundle} from '../core/html-exporter.js';
+import {fusumaManifest} from '../Typing/templates/fusuma/manifest.js';
+let failures=0;const root=document.querySelector('#controls');
+const check=(name,pass)=>{const li=document.createElement('li');li.textContent=(pass?'PASS ':'FAIL ')+name;document.querySelector('#results').append(li);if(!pass)failures++;};
+const wait=()=>new Promise(r=>setTimeout(r,30));
+try{
+ for(const enabled of [true,false]){
+  const project=imageProject(imageAtBytes(100000));project.questions=Array.from({length:25},(_,i)=>({...project.questions[0],id:'q'+i}));
+  const store=createProjectStore(project),calls=[],capabilities=[];
+  const api=createOwnerApi({client:{rpc:async(name,args)=>{
+   if(name==='creator_context')return{data:enabled?ok({capabilities:{questionImages:true,sharedImages:true},counts:{games:0,publications:0},limits:{games:20,publications:10}}):failure('NETWORK')};
+   calls.push(args);return{data:ok({id:'g',version:1,publication:null,publicationDirty:false})};
+  }}});
+  const ui=mountCloudControls({root,store,api,cloudState:createCloudState({getProject:store.getSnapshot}),configured:true,storage:memoryStorage(),
+   getPasteText:()=>'',setPasteText:()=>{},onStorageCapabilities:v=>capabilities.push(v),
+   auth:{getUser:async()=>ok({id:'a'}),subscribe:()=>()=>{}}});
+  await ui.ready;for(let i=0;i<50&&enabled&&capabilities.at(-1)?.sharedImages!==true;i++)await wait();
+  check('保存形式の通知 '+enabled,capabilities.at(-1)?.sharedImages===enabled);
+  const result=await ui.editor.save();check('能力取得失敗時は新形式を送らない '+enabled,enabled?result.ok:calls.length===0);
+  if(enabled){const text=calls[0]?.p_args.projectText;check('実送信本文は2 MiB未満の重複除去形式',!!text&&new TextEncoder().encode(text).length<2097152&&JSON.parse(text).images.length===1);}
+  const text=serializeProject(store.getSnapshot());check('端末保存・再読込みで画像維持',JSON.stringify(parseProjectFile(text))===JSON.stringify(project));
+  store.setQuestionImage('q0',{...project.questions[0].image,placement:'left'});store.setQuestionImage('q0',null);
+  check('1問の画像削除は他問に影響しない',store.getSnapshot().questions[1].image.placement==='top');
+  ui.destroy();
+ }
+ const project=imageProject(),wire=JSON.parse(serializeProject(project)).project;
+ const html=buildStandaloneHtml({project:wire,bundle:await loadTemplateBundle(fusumaManifest)});
+ const frame=document.createElement('iframe');frame.title='新保存形式からの単独HTML再生';frame.style='width:960px;height:540px';
+ frame.srcdoc=html;document.body.append(frame);
+ for(let i=0;i<300&&!frame.contentWindow.__DEKIRU_GAME__;i++)await wait();
+ check('新形式を読み戻した単独HTMLが起動',!!frame.contentWindow.__DEKIRU_GAME__);
+ const shadow=frame.contentDocument.querySelector('#game-host')?.shadowRoot;
+ shadow?.querySelector('[data-role=start]').click();
+ for(let i=0;i<300&&!shadow?.querySelector('.question-image')?.naturalWidth;i++)await wait();
+ check('単独HTMLに問題画像を保持',shadow?.querySelector('.question-image')?.naturalWidth===1);
+}catch(e){check('例外 '+e.message,false);}
+document.body.dataset.status=failures?'fail':'pass';document.title=(failures?'FAIL':'PASS')+' Shared image storage';
+</script></html>

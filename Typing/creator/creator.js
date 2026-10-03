@@ -15,6 +15,7 @@ import {createCloudState} from '../../core/cloud/cloud-state.js';
 import {loadBrowserCloud} from '../../core/cloud/browser-client.js';
 import {mountCloudControls} from './cloud-controls.js';
 import {serializeCloudProject} from '../../core/cloud/project-validation.js';
+import {packProjectImages} from '../../core/project-image-pool.js';
 
 const typingSchema = [
   { key: 'prompt', label: '問題', required: true },
@@ -85,6 +86,7 @@ let readingProject = false;
 let appliedPasteText = '';
 let authNavigation = false;
 let cloudControls = null;
+let sharedImagesEnabled=false;
 const cloudState = createCloudState({getProject:store.getSnapshot});
 const images = createQuestionImageController({store});
 const canCommit = () => !images.getState().busy;
@@ -140,7 +142,9 @@ function syncImageControls() {
   }
   elements.saveButton.disabled=state.busy;
   elements.exportButton.disabled=state.busy||exporting;
-  const bytes=new TextEncoder().encode(serializeCloudProject(project)).byteLength;
+  let storedProject=project;
+  if(sharedImagesEnabled){try{storedProject=packProjectImages(project);}catch{}}
+  const bytes=new TextEncoder().encode(serializeCloudProject(storedProject)).byteLength;
   document.querySelector('[data-role=image-capacity]').textContent=`教材データ：約 ${Math.ceil(bytes/1024)} KiB ／ オンライン上限 ${project.schemaVersion===2?'2 MiB':'256 KiB'}（文章のみ256 KiBまで）`;
 }
 
@@ -548,6 +552,7 @@ void (async()=>{
     setPasteText:text=>{elements.paste.value=text;appliedPasteText='';},
     onProjectLoaded:syncProjectFields,onAuthNavigation:value=>{authNavigation=value;},
     canCommit,subscribeCommitState:images.subscribe,
+    onStorageCapabilities:({sharedImages})=>{if(sharedImagesEnabled!==sharedImages){sharedImagesEnabled=sharedImages;syncImageControls();}},
     returnTo:'Typing/creator/index.html'+(gameId?'?game='+gameId:''),
   });
   await cloudControls.ready;

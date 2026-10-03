@@ -2,7 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createAuth,RETURN_KEY,AUTH_STORAGE_KEY} from '../core/cloud/auth.js';
 import {memoryStorage} from './fixtures/memory-storage.mjs';
+import {saveAuthResume,takeAuthResume,RESUME_KEY,RESUME_TTL} from '../core/cloud/auth-resume.js';
+import {imageProject,imageAtBytes} from './fixtures/question-images.mjs';
 const appBaseUrl='https://ruriru-app.github.io/DEKIRU-GameCreator/';
+test('auth resume compacts both live and last-saved projects and restores independent images',()=>{
+  const project=imageProject(imageAtBytes(100000));project.questions=Array.from({length:25},(_,i)=>({...project.questions[0],id:'q'+i}));
+  const payload={project,pasteText:'',fileState:{dirty:true,previewDirty:true,unsavedChanges:true,hasProjectFile:false},cloudLink:{ownerId:'a',record:{id:'g',version:1,project}},returnTo:'Typing/creator/index.html'};
+  const storage=memoryStorage();assert.equal(saveAuthResume(storage,payload,100).ok,true);
+  const raw=storage.getItem(RESUME_KEY);assert.ok(raw.length<300000);
+  const saved=JSON.parse(raw);assert.equal(saved.payload.project.images.length,1);assert.equal(saved.payload.cloudLink.record.project.images.length,1);
+  const restored=takeAuthResume(storage,101);assert.deepEqual(restored.project,project);assert.deepEqual(restored.cloudLink.record.project,project);
+  assert.equal(storage.getItem(RESUME_KEY),null);
+  storage.setItem(RESUME_KEY,JSON.stringify({createdAt:100,payload}));assert.deepEqual(takeAuthResume(storage,101).project,project);
+  assert.equal(saveAuthResume({setItem(){throw Error('quota');}},payload,100).ok,false);
+  saveAuthResume(storage,payload,100);assert.equal(takeAuthResume(storage,100+RESUME_TTL),null);
+});
 function fixture(storage=memoryStorage()) {
   const calls=[];
   const client={auth:{

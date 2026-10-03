@@ -10,6 +10,7 @@ try{
  const body={schemaVersion:1,publicationVersion:1,runtimeVersion:'fusuma-1',project:{schemaVersion:1,title:'共有テスト',gameType:'typing',templateId:'fusuma',settings:{volume:0,muted:true},questions:[{id:'a',prompt:'あを入力',displayAnswer:'亜',reading:'あ',romajiHint:'a'},{id:'i',prompt:'いを入力',displayAnswer:'伊',reading:'い',romajiHint:'i'}]}};
  const withImages=new URLSearchParams(location.search).has('images');
  if(withImages){const {pngImage}=await import('./fixtures/question-images.mjs');body.runtimeVersion='fusuma-2';body.project.schemaVersion=2;body.project.questions[0].image={...pngImage,placement:'left'};}
+ if(new URLSearchParams(location.search).has('pooled')){const {packProjectImages}=await import('../core/project-image-pool.js');body.project=packProjectImages(body.project);body.runtimeVersion='fusuma-3';}
  const player=await startSharedPlayer({host:root,pageUrl:'https://ruriru-app.github.io/DEKIRU-GameCreator/p/?g=G7m2Pk8wQ4t9R3vX6nYzAa',endpoint:'https://project.supabase.co/functions/v1/shared-game',fetchImpl:async(url,options)=>{requests.push({url,options});return new Response(JSON.stringify(stopped?{}:body),{status:stopped?404:200});}});
  const shadow=root.querySelector('#game-host').shadowRoot,q=role=>shadow.querySelector('[data-role="'+role+'"]');
  check('完成済みゲームが開始ボタンで起動を待つ',!q('start').hidden&&q('quiz').hidden);

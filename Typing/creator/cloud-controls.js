@@ -102,9 +102,11 @@ export function mountCloudControls({
   returnTo='Typing/creator/index.html',gameId=null,
   copyText=text=>navigator.clipboard.writeText(text),
   canCommit=()=>true,subscribeCommitState=()=>()=>{},
+  onStorageCapabilities=()=>{},
 }) {
   let destroyed=false,identityRevision=0,context=null,activeChoice=null,authNavigating=false;
-  const editor=createCloudEditor({store,cloudState,api,canCommit,questionImagesEnabled:()=>context?.capabilities?.questionImages===true});
+  const sharedImages=()=>context?.capabilities?.questionImages===true&&context?.capabilities?.sharedImages===true;
+  const editor=createCloudEditor({store,cloudState,api,canCommit,questionImagesEnabled:()=>context?.capabilities?.questionImages===true,sharedImagesEnabled:sharedImages});
   const page=root.ownerDocument.defaultView;
   function setAuthNavigation(value){authNavigating=value;onAuthNavigation(value);}
   async function onPageShow(event){
@@ -121,6 +123,7 @@ export function mountCloudControls({
   const q=s=>root.querySelector(s),buttons=Object.fromEntries(['login','logout','save','publish','retry','copy','reload','save-copy'].map(a=>[a,q('[data-cloud-action="'+a+'"]')]));
   function message(text){q('[data-cloud-message]').textContent=text;}
   function render() {
+    onStorageCapabilities({sharedImages:sharedImages()});
     const state=editor.getState(),pub=state.gameMeta?.publication;
     q('[data-cloud-identity]').textContent=!configured?'オンライン機能は準備中です。問題セットの保存・HTML書き出しは利用できます。':state.user?(state.user.email||'作成者')+' でログイン中':'オンライン保存・URL配布には、作成者のログインが必要です。遊ぶ人のログインは不要です。';
     q('[data-cloud-summary]').textContent=context?'無料試験運用：保存 '+context.counts.games+' / '+context.limits.games+'件・公開 '+context.counts.publications+' / '+context.limits.publications+'件':'';

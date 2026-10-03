@@ -90,10 +90,12 @@ try {
   const exportButton = q('[data-action="export-html"]'); exportButton.click();
   edit('[data-role="set-title"]', '書き出し中の新しい変更');
   await until(() => !exportButton.disabled);
+  check('準備中に編集があれば古い内容を書き出さない', !downloads.some(item => item.name.endsWith('.html')));
+  check('書き出し中の編集は未書き出し・未保存のまま保持される', store.getState().dirty && store.getState().unsavedChanges && !q('[data-role="preview-dirty"]').hidden);
+  exportButton.click();await until(() => !exportButton.disabled);
   const htmlDownload = downloads.find(item => item.name.endsWith('.html'));
   const html = htmlDownload ? await htmlDownload.blob.text() : '';
-  check('再編集した教材から画像・音声込みHTMLを書き出せる', html.includes('書き出す教材') && html.includes('data:image/') && html.includes('data:audio/'));
-  check('書き出し中の編集は未書き出し・未保存のまま保持される', store.getState().dirty && store.getState().unsavedChanges && !q('[data-role="preview-dirty"]').hidden);
+  check('再操作で最新の教材から画像・音声込みHTMLを書き出せる', html.includes('書き出し中の新しい変更') && html.includes('data:image/') && html.includes('data:audio/'));
   save.click();
   const afterSave = new win.Event('beforeunload', { cancelable: true }); win.dispatchEvent(afterSave);
   check('最新の編集用ファイル作成後は離脱警告が解除される', !afterSave.defaultPrevented);

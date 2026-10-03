@@ -1,5 +1,6 @@
 import {serializeProject,parseProjectFile} from '../../Typing/creator/project-file.js';
 import {ok,failure} from './contracts.js';
+import {packProjectImages} from '../project-image-pool.js';
 export const RESUME_KEY='dekiru-gamecreator.auth-resume.v1';
 export const RESUME_TTL=7200000;
 export function isSafeReturnTo(value) {
@@ -28,6 +29,8 @@ function checkedPayload(value) {
 export function saveAuthResume(storage,payload,nowMs=Date.now()) {
   try {
     const data=checkedPayload(payload);
+    data.project=packProjectImages(data.project);
+    if(data.cloudLink)data.cloudLink.record.project=packProjectImages(data.cloudLink.record.project);
     storage.setItem(RESUME_KEY,JSON.stringify({createdAt:nowMs,payload:data}));
     return ok(null);
   } catch {return failure('VALIDATION','ログイン前の一時保存ができませんでした。先に編集用ファイルを保存してください。');}
